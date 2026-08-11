@@ -6,13 +6,22 @@ import 'package:lunarabi/features/bridge/bottom_nav_bar.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
+import 'package:lunarabi/features/webview/webview_committed_url.dart';
+import 'package:lunarabi/features/webview/webview_navigation_handler.dart';
+import 'package:lunarabi/features/webview/webview_navigation_policy.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 typedef NavigatorReady = void Function(AppNavigator navigator, HostGuard guard);
-typedef PurchasePressed = Future<void> Function(
-  BuildContext context,
-  AppNavigator navigator,
-);
+typedef PurchasePressed =
+    Future<void> Function(BuildContext context, AppNavigator navigator);
+
+Future<bool> _launchUrl(
+  Uri uri, {
+  LaunchMode mode = LaunchMode.platformDefault,
+}) {
+  return launchUrl(uri, mode: mode);
+}
 
 class WebViewShell extends StatefulWidget {
   const WebViewShell({
@@ -25,6 +34,7 @@ class WebViewShell extends StatefulWidget {
     this.authTokenStore,
     this.pushTokenStore,
     this.bridgeHost,
+    this.launchUrlFn = _launchUrl,
   });
 
   final AppConfig config;
@@ -35,6 +45,7 @@ class WebViewShell extends StatefulWidget {
   final AuthTokenStore? authTokenStore;
   final PushTokenStore? pushTokenStore;
   final BridgeHost? bridgeHost;
+  final WebViewLaunchUrl launchUrlFn;
 
   @override
   State<WebViewShell> createState() => _WebViewShellState();
@@ -44,6 +55,8 @@ class _WebViewShellState extends State<WebViewShell> {
   late final WebViewController _controller;
   late HostGuard _guard;
   late WebViewAppNavigator _navigator;
+  late WebViewCommittedUrl _committedUrl;
+  late WebViewNavigationHandler _navigationHandler;
   late final BottomNavController _nav;
   late final AuthTokenStore _auth;
   late final PushTokenStore _push;
@@ -57,17 +70,13 @@ class _WebViewShellState extends State<WebViewShell> {
     _nav = widget.navController ?? BottomNavController();
     _auth = widget.authTokenStore ?? AuthTokenStore();
     _push = widget.pushTokenStore ?? PushTokenStore();
-    _bridge = widget.bridgeHost ??
-        BridgeHost(nav: _nav, auth: _auth, push: _push);
+    _bridge =
+        widget.bridgeHost ?? BridgeHost(nav: _nav, auth: _auth, push: _push);
 
-    _guard = HostGuard(widget.config);
+    _configureNavigationState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) => _ensureBridgeAttached(),
-        ),
-      )
+      ..setNavigationDelegate(_buildNavigationDelegate())
       ..loadRequest(widget.config.webBaseUrl);
     _navigator = WebViewAppNavigator(guard: _guard, controller: _controller);
 
@@ -79,10 +88,51 @@ class _WebViewShellState extends State<WebViewShell> {
     });
   }
 
+  void _configureNavigationState() {
+    _guard = HostGuard(widget.config);
+    final policy = WebViewNavigationPolicy(_guard);
+    _committedUrl = WebViewCommittedUrl(
+      webBaseUrl: widget.config.webBaseUrl,
+      policy: policy,
+    );
+    _navigationHandler = WebViewNavigationHandler(
+      policy: policy,
+      committedUrl: _committedUrl,
+      launchUrlFn: widget.launchUrlFn,
+    );
+  }
+
+  NavigationDelegate _buildNavigationDelegate() {
+    return NavigationDelegate(
+      onNavigationRequest: _navigationHandler.handleNavigationRequest,
+      onPageStarted: _markPageStarted,
+      onPageFinished: _markPageFinished,
+    );
+  }
+
+  void _markPageStarted(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _committedUrl.clear();
+      return;
+    }
+    _committedUrl.markPageStarted(uri);
+  }
+
+  void _markPageFinished(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      _committedUrl.markPageFinished(uri);
+    }
+    _ensureBridgeAttached();
+  }
+
   Future<void> _ensureBridgeAttached() async {
     if (_bridgeAttached) return;
     _bridgeAttached = true;
-    final platform = defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
+    final platform = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'ios'
+        : 'android';
     try {
       await _bridge.attach(_controller, platform: platform);
     } catch (error, stack) {
@@ -96,11 +146,15 @@ class _WebViewShellState extends State<WebViewShell> {
   @override
   void didUpdateWidget(covariant WebViewShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.config.flavor != widget.config.flavor) {
-      _guard = HostGuard(widget.config);
+    if (oldWidget.config.flavor != widget.config.flavor ||
+        oldWidget.launchUrlFn != widget.launchUrlFn) {
+      _configureNavigationState();
+      _controller.setNavigationDelegate(_buildNavigationDelegate());
       _navigator = WebViewAppNavigator(guard: _guard, controller: _controller);
       _bridgeAttached = false;
-      _controller.loadRequest(widget.config.webBaseUrl);
+      if (oldWidget.config.flavor != widget.config.flavor) {
+        _controller.loadRequest(widget.config.webBaseUrl);
+      }
       widget.onNavigatorReady?.call(_navigator, _guard);
     }
   }
@@ -126,10 +180,7 @@ class _WebViewShellState extends State<WebViewShell> {
               onSelected: widget.onSwitchFlavor,
               itemBuilder: (context) => [
                 for (final flavor in Flavor.values)
-                  PopupMenuItem(
-                    value: flavor,
-                    child: Text(flavor.name),
-                  ),
+                  PopupMenuItem(value: flavor, child: Text(flavor.name)),
               ],
             ),
         ],

@@ -149,3 +149,13 @@ HTTPS のみ: `https://app.lunarabi.example/...`
 - Android App Links / iOS Universal Links（`Runner.entitlements`）
 - サンプル: `docs/well-known/*.example`
 - `/pay/gmo/complete` は DeepLinkBus へ（WebView 遷移なし）。payments が confirm 後 `/pay/done` へ
+
+## WebView 外部リンク
+
+WebView のトップレベル遷移は許可ホストだけアプリ内で継続する。許可ホスト以外の
+`http` / `https`、`mailto`、`tel` は OS の外部アプリで開く。
+
+Android 11 以降で外部アプリの存在確認を追加する場合は package visibility
+（`queries`）設定が必要になることがある。iOS で `mailto` / `tel` の
+`canOpenURL` 判定を使う場合は `LSApplicationQueriesSchemes` に scheme を
+列挙する必要がある。現在の実装は起動失敗をログに残し、WebView 内遷移は許可しない。
