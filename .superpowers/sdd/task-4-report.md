@@ -28,14 +28,16 @@ Changes:
 - Updated `WebViewShell._handleSystemBack` to refresh stale `_routeCanPop`, wait for the `PopScope` rebuild, then call `Navigator.maybePop()`.
 - If the shell is the root route and `maybePop()` bubbles, the handler calls `SystemNavigator.pop()` so Android back can exit instead of being swallowed.
 - Added a regression test proving the no-history system-back path executes route pop and does not call WebView `goBack()`.
+- Added a mounted guard before executing the pop/exit path after the async WebView history check.
 
 TDD:
 - Red: `fvm flutter test test/features/webview/webview_shell_navigation_test.dart` failed because `handleWebViewSystemBack` did not exist for the new no-history route-pop test.
 - Green: focused WebView shell navigation test passed after wiring the route-pop callback.
 
 Verification:
-- `fvm flutter test test/features/webview/webview_shell_navigation_test.dart` passed, 14 tests.
-- `fvm flutter test` passed, 105 tests.
+- Final rerun: `fvm flutter test test/features/webview/webview_shell_navigation_test.dart` passed, 14 tests.
+- Final rerun: `fvm flutter test` passed, 105 tests.
 
 Commit:
 - `e62d4cd` Fix webview no-history back pop
+- `8c18d51` Guard webview back pop after dispose
