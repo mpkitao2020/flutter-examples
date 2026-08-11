@@ -68,17 +68,18 @@ class _FakeStore implements IapStore {
     this.emitAfterBuy,
     this.backlogOnListen,
     this.buyResult = true,
-  }) : products = products ??
-            [
-              ProductDetails(
-                id: 'lunarabi.credit.100',
-                title: 'Credit 100',
-                description: 'test',
-                price: '¥100',
-                rawPrice: 100,
-                currencyCode: 'JPY',
-              ),
-            ];
+  }) : products =
+           products ??
+           [
+             ProductDetails(
+               id: 'lunarabi.credit.100',
+               title: 'Credit 100',
+               description: 'test',
+               price: '¥100',
+               rawPrice: 100,
+               currencyCode: 'JPY',
+             ),
+           ];
 
   final List<ProductDetails> products;
   final List<PurchaseDetails>? emitAfterBuy;
@@ -114,17 +115,20 @@ class _FakeStore implements IapStore {
   Future<ProductDetailsResponse> queryProductDetails(
     Set<String> identifiers,
   ) async {
-    final matched =
-        products.where((p) => identifiers.contains(p.id)).toList();
+    final matched = products.where((p) => identifiers.contains(p.id)).toList();
     return ProductDetailsResponse(
       productDetails: matched,
-      notFoundIDs:
-          identifiers.difference(matched.map((e) => e.id).toSet()).toList(),
+      notFoundIDs: identifiers
+          .difference(matched.map((e) => e.id).toSet())
+          .toList(),
     );
   }
 
   @override
-  Future<bool> buyConsumable({required PurchaseParam purchaseParam}) async {
+  Future<bool> buyConsumable({
+    required PurchaseParam purchaseParam,
+    bool autoConsume = false,
+  }) async {
     final events = emitAfterBuy;
     if (events != null) {
       scheduleMicrotask(() => _controller.add(events));
@@ -186,12 +190,17 @@ void main() {
   });
 
   test('同一 purchase の再配信では confirm を二重に呼ばない', () async {
-    final purchase =
-        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-dup');
+    final purchase = _purchase(
+      status: PurchaseStatus.purchased,
+      purchaseID: 'tx-dup',
+    );
     final store = _FakeStore(emitAfterBuy: [purchase, purchase]);
     addTearDown(store.dispose);
     final backend = _RecordingBackend();
-    final service = IapPurchaseService(store: store, sourceOverride: 'google_play');
+    final service = IapPurchaseService(
+      store: store,
+      sourceOverride: 'google_play',
+    );
 
     final status = await service.buy(product: product, backend: backend);
 
@@ -250,7 +259,10 @@ void main() {
     );
     addTearDown(store.dispose);
     final backend = _RecordingBackend()..confirmError = Exception('boom');
-    final service = IapPurchaseService(store: store, sourceOverride: 'google_play');
+    final service = IapPurchaseService(
+      store: store,
+      sourceOverride: 'google_play',
+    );
 
     final status = await service.buy(product: product, backend: backend);
 
@@ -316,8 +328,10 @@ void main() {
   });
 
   test('confirm 中の canceled でも success を維持', () async {
-    final purchase =
-        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-race');
+    final purchase = _purchase(
+      status: PurchaseStatus.purchased,
+      purchaseID: 'tx-race',
+    );
     final store = _FakeStore(emitAfterBuy: [purchase]);
     addTearDown(store.dispose);
     final backend = _RecordingBackend()

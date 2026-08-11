@@ -10,13 +10,16 @@ abstract interface class IapStore {
   Future<bool> isAvailable();
   Future<ProductDetailsResponse> queryProductDetails(Set<String> identifiers);
   Stream<List<PurchaseDetails>> get purchaseStream;
-  Future<bool> buyConsumable({required PurchaseParam purchaseParam});
+  Future<bool> buyConsumable({
+    required PurchaseParam purchaseParam,
+    bool autoConsume = false,
+  });
   Future<void> completePurchase(PurchaseDetails purchase);
 }
 
 class PluginIapStore implements IapStore {
   PluginIapStore([InAppPurchase? instance])
-      : _iap = instance ?? InAppPurchase.instance;
+    : _iap = instance ?? InAppPurchase.instance;
 
   final InAppPurchase _iap;
 
@@ -32,8 +35,14 @@ class PluginIapStore implements IapStore {
   Stream<List<PurchaseDetails>> get purchaseStream => _iap.purchaseStream;
 
   @override
-  Future<bool> buyConsumable({required PurchaseParam purchaseParam}) {
-    return _iap.buyConsumable(purchaseParam: purchaseParam);
+  Future<bool> buyConsumable({
+    required PurchaseParam purchaseParam,
+    bool autoConsume = false,
+  }) {
+    return _iap.buyConsumable(
+      purchaseParam: purchaseParam,
+      autoConsume: autoConsume,
+    );
   }
 
   @override
@@ -62,6 +71,33 @@ class IapPurchaseService {
 
   final HandledIdSet _handledPurchaseKeys = HandledIdSet();
   Future<PaymentStatus>? _activeBuy;
+
+  String get platform =>
+      sourceOverride ??
+      (defaultTargetPlatform == TargetPlatform.iOS
+          ? 'app_store'
+          : 'google_play');
+
+  Stream<List<PurchaseDetails>> get purchaseStream => _store.purchaseStream;
+
+  Future<ProductDetails?> productDetailsFor(String productId) async {
+    final available = await _store.isAvailable();
+    if (!available) return null;
+    final response = await _store.queryProductDetails({productId});
+    if (response.productDetails.isEmpty) return null;
+    return response.productDetails.first;
+  }
+
+  Future<bool> buyProduct(ProductDetails details) {
+    return _store.buyConsumable(
+      purchaseParam: PurchaseParam(productDetails: details),
+      autoConsume: false,
+    );
+  }
+
+  Future<void> completePurchase(PurchaseDetails purchase) {
+    return _store.completePurchase(purchase);
+  }
 
   String _key(PurchaseDetails purchase) {
     return purchase.purchaseID ??
@@ -213,13 +249,11 @@ class IapPurchaseService {
     if (_handledPurchaseKeys.contains(key)) return true;
     _handledPurchaseKeys.add(key);
 
-    final source = sourceOverride ??
-        (defaultTargetPlatform == TargetPlatform.iOS ? 'app_store' : 'google_play');
     try {
       await backend.confirmIap(
         productId: product.id,
         verificationData: purchase.verificationData.serverVerificationData,
-        source: source,
+        source: platform,
       );
       await _store.completePurchase(purchase);
       return true;
