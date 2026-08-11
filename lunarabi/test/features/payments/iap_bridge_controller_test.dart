@@ -132,6 +132,34 @@ void main() {
     });
   });
 
+  test(
+    'purchase stream ignores non-allowlisted products before persistence or emission',
+    () async {
+      final h = _Harness();
+      addTearDown(h.dispose);
+      await h.controller.startPurchaseStream();
+
+      h.store.emit([
+        _purchase(purchaseID: 'bad-purchased', productId: 'not.allowed'),
+        _purchase(
+          status: PurchaseStatus.canceled,
+          purchaseID: 'bad-canceled',
+          productId: 'not.allowed',
+        ),
+        _purchase(
+          status: PurchaseStatus.error,
+          purchaseID: 'bad-error',
+          productId: 'not.allowed',
+        ),
+      ]);
+      await _flush();
+
+      expect(await h.pending.getByKey('bad-purchased'), isNull);
+      expect(h.byType(BridgeTypes.iapPurchaseUpdated), isEmpty);
+      expect(h.byType(BridgeTypes.iapFinished), isEmpty);
+    },
+  );
+
   test('duplicate, stale, and unknown confirms never complete twice', () async {
     final h = _Harness(confirmTimeout: const Duration(seconds: 1));
     addTearDown(h.dispose);
@@ -223,6 +251,42 @@ void main() {
       expect(h.response('no-live').payload, {
         'ok': false,
         'error': 'no_live_purchase',
+      });
+    },
+  );
+
+  test(
+    'rehydrated non-allowlisted pending records do not emit or complete',
+    () async {
+      final h = _Harness(confirmTimeout: const Duration(seconds: 1));
+      addTearDown(h.dispose);
+      await h.pending.upsert(
+        IapPendingRecord(
+          purchaseKey: 'bad-rehydrate',
+          purchaseId: 'bad-rehydrate',
+          productId: 'not.allowed',
+          platform: 'google_play',
+          verificationData: 'server-token',
+          waitingConfirm: true,
+          updatedAt: DateTime.utc(2026, 8, 11),
+        ),
+      );
+
+      await h.controller.startPurchaseStream();
+      final purchase = _purchase(
+        purchaseID: 'bad-rehydrate',
+        productId: 'not.allowed',
+      );
+      h.store.emit([purchase]);
+      await _flush();
+      await h.confirm('bad-rehydrate', ok: true, requestId: 'bad-confirm');
+
+      expect(h.byType(BridgeTypes.iapPurchaseUpdated), isEmpty);
+      expect(h.byType(BridgeTypes.iapFinished), isEmpty);
+      expect(h.store.completed, isEmpty);
+      expect(h.response('bad-confirm').payload, {
+        'ok': false,
+        'error': 'product_not_allowed',
       });
     },
   );

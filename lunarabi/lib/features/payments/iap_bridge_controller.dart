@@ -121,6 +121,12 @@ class IapBridgeController {
       await _respondError(message, 'unknown_purchase');
       return;
     }
+    if (!_isAllowedProductId(record.productId)) {
+      _livePurchases.remove(purchaseKey);
+      _confirmTimers.remove(purchaseKey)?.cancel();
+      await _respondError(message, 'product_not_allowed');
+      return;
+    }
     if (!record.waitingConfirm) {
       await _respondError(message, 'confirm_not_waiting');
       return;
@@ -173,6 +179,7 @@ class IapBridgeController {
   }
 
   Future<void> _handlePurchased(PurchaseDetails purchase) async {
+    if (!_isAllowedProductId(purchase.productID)) return;
     final record = _recordForPurchase(purchase).copyWith(
       waitingConfirm: true,
       status: IapPendingStatus.waiting,
@@ -188,6 +195,7 @@ class IapBridgeController {
     PurchaseDetails purchase, {
     required String status,
   }) async {
+    if (!_isAllowedProductId(purchase.productID)) return;
     final record = _recordForPurchase(purchase);
     _livePurchases.remove(record.purchaseKey);
     _confirmTimers.remove(record.purchaseKey)?.cancel();
@@ -229,6 +237,7 @@ class IapBridgeController {
     _confirmTimers.remove(purchaseKey);
     final record = await _pending.getByKey(purchaseKey);
     if (record == null || !record.waitingConfirm) return;
+    if (!_isAllowedProductId(record.productId)) return;
     final timedOut = record.copyWith(
       waitingConfirm: false,
       status: IapPendingStatus.timedOut,
@@ -247,8 +256,13 @@ class IapBridgeController {
     if (!_isTrustedBridgeOrigin) return;
     final records = await _pending.allWaiting();
     for (final record in records) {
+      if (!_isAllowedProductId(record.productId)) continue;
       await _emitPurchaseUpdated(record);
     }
+  }
+
+  bool _isAllowedProductId(String productId) {
+    return allowedProductIds.contains(productId);
   }
 
   Future<bool> _requireTrustedBridgeOrigin(BridgeMessage request) async {

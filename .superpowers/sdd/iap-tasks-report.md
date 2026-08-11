@@ -36,3 +36,10 @@ Branch: `cursor/lunarabi-iap-bridge-c3bc`
 
 - Backend/Web verify API and frame-policy gates remain external release artifacts; this branch documents and enforces native-side handoff only.
 - Existing legacy `IapPurchaseService.buy(...backend...)` remains for regression coverage but is no longer reachable from the native payment sheet.
+
+## Follow-up: allowlist enforcement review finding
+
+- Red: `flutter test test/features/payments/iap_bridge_controller_test.dart` failed because non-allowlisted stream purchases persisted and non-allowlisted rehydrated records emitted.
+- Fix: `IapBridgeController` now checks `allowedProductIds` before stream persistence/emission, rehydrated emission, timeout finished emission, and confirm completion.
+- Covering: `flutter test test/features/payments/iap_bridge_controller_test.dart` passed, `12` tests.
+- Full suite: `flutter test` passed, `139` tests.
