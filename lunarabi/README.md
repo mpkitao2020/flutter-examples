@@ -119,3 +119,10 @@ fvm flutter test
 ## 審査メモ（先出し）
 
 アプリ内デジタルコンテンツでも、後続の payments ブランチで Store 外決済（GMO / 銀行振込）を出す予定。iOS ガイドライン 3.1.1 のリスクはプロダクト側で合意済み。
+
+## ディープリンク
+
+HTTPS のみ: `https://app.lunarabi.example/...`
+- Android App Links / iOS Universal Links（`Runner.entitlements`）
+- サンプル: `docs/well-known/*.example`
+- `/pay/gmo/complete` は DeepLinkBus へ（WebView 遷移なし）

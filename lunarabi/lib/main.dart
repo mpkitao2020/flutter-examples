@@ -1,7 +1,11 @@
+import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lunarabi/core/app_services.dart';
 import 'package:lunarabi/core/env/app_config.dart';
+import 'package:lunarabi/core/navigation/app_navigator.dart';
+import 'package:lunarabi/features/deeplink/deep_link_listener.dart';
 import 'package:lunarabi/features/webview/webview_shell.dart';
 
 Future<void> main() async {
@@ -29,9 +33,28 @@ class LunarabiApp extends StatefulWidget {
 
 class _LunarabiAppState extends State<LunarabiApp> {
   late AppConfig _config = widget.config;
+  DeepLinkListener? _deepLinkListener;
 
   void _switchFlavor(Flavor flavor) {
     setState(() => _config = _config.copyWithFlavor(flavor));
+  }
+
+  Future<void> _onNavigatorReady(AppNavigator navigator, HostGuard guard) async {
+    await _deepLinkListener?.dispose();
+    final listener = DeepLinkListener(
+      guard: guard,
+      bus: AppServices.deepLinkBus,
+      navigator: navigator,
+      appLinks: AppLinks(),
+    );
+    _deepLinkListener = listener;
+    await listener.start();
+  }
+
+  @override
+  void dispose() {
+    _deepLinkListener?.dispose();
+    super.dispose();
   }
 
   @override
@@ -41,6 +64,11 @@ class _LunarabiAppState extends State<LunarabiApp> {
       home: WebViewShell(
         config: _config,
         onSwitchFlavor: kReleaseMode ? null : _switchFlavor,
+        onNavigatorReady: _onNavigatorReady,
+        navController: AppServices.navController,
+        authTokenStore: AppServices.authTokenStore,
+        pushTokenStore: AppServices.pushTokenStore,
+        bridgeHost: AppServices.bridgeHost,
       ),
     );
   }
