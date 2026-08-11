@@ -29,7 +29,7 @@ class _AozoraTransferPageState extends State<AozoraTransferPage> {
 
   @override
   void dispose() {
-    // Do not loop; just drop the reference so a late result is ignored.
+    // Dart Futures cannot be cancelled; drop the ref so late results are ignored.
     _inFlight = null;
     super.dispose();
   }
@@ -46,37 +46,44 @@ class _AozoraTransferPageState extends State<AozoraTransferPage> {
     );
     _inFlight = future;
 
-    PaymentStatus status;
     try {
-      status = await future;
+      final status = await future;
+      if (!mounted || !identical(_inFlight, future)) return;
+
+      switch (status) {
+        case PaymentStatus.success:
+          try {
+            await widget.navigator.openDeepLink(
+              widget.config.webBaseUrl.replace(path: '/pay/done'),
+            );
+          } catch (_) {
+            if (mounted) {
+              setState(() {
+                _busy = false;
+                _message = '完了画面を開けませんでした';
+              });
+            }
+            return;
+          }
+          if (mounted) Navigator.of(context).pop(PaymentStatus.success);
+        case PaymentStatus.pending:
+          setState(() {
+            _busy = false;
+            _message = 'まだ入金を確認できません。しばらくしてから再度お試しください。';
+          });
+        case PaymentStatus.failure:
+        case PaymentStatus.idle:
+          setState(() {
+            _busy = false;
+            _message = '入金確認に失敗しました';
+          });
+      }
     } catch (error) {
       if (!mounted || !identical(_inFlight, future)) return;
       setState(() {
         _busy = false;
         _message = '確認に失敗しました';
       });
-      return;
-    }
-
-    if (!mounted || !identical(_inFlight, future)) return;
-
-    switch (status) {
-      case PaymentStatus.success:
-        await widget.navigator.openDeepLink(
-          widget.config.webBaseUrl.replace(path: '/pay/done'),
-        );
-        if (mounted) Navigator.of(context).pop(PaymentStatus.success);
-      case PaymentStatus.pending:
-        setState(() {
-          _busy = false;
-          _message = 'まだ入金を確認できません。しばらくしてから再度お試しください。';
-        });
-      case PaymentStatus.failure:
-      case PaymentStatus.idle:
-        setState(() {
-          _busy = false;
-          _message = '入金確認に失敗しました';
-        });
     }
   }
 

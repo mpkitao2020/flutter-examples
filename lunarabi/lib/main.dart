@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -47,10 +49,12 @@ class _LunarabiAppState extends State<LunarabiApp> {
   var _pushStarted = false;
 
   void _switchFlavor(Flavor flavor) {
-    setState(() {
-      _config = _config.copyWithFlavor(flavor);
-      _payments = null;
-    });
+    // Synchronously drop the old completer reference after requesting dispose.
+    final previous = _gmo;
+    _gmo = null;
+    _payments = null;
+    unawaited(previous?.dispose() ?? Future<void>.value());
+    setState(() => _config = _config.copyWithFlavor(flavor));
   }
 
   PaymentCoordinator _ensurePayments(AppNavigator navigator) {
@@ -58,7 +62,8 @@ class _LunarabiAppState extends State<LunarabiApp> {
     if (existing != null && identical(existing.config, _config)) {
       return existing;
     }
-    _gmo?.dispose();
+    final previous = _gmo;
+    _gmo = null;
     final gmo = GmoLinkPayment(
       backend: AppServices.paymentBackend,
       bus: AppServices.deepLinkBus,
@@ -66,6 +71,12 @@ class _LunarabiAppState extends State<LunarabiApp> {
       config: _config,
     );
     _gmo = gmo;
+    // Serialize dispose → attach so two GMO listeners never overlap.
+    unawaited(() async {
+      await previous?.dispose();
+      if (!identical(_gmo, gmo)) return;
+      await gmo.attachCompleter();
+    }());
     final coordinator = PaymentCoordinator(
       backend: AppServices.paymentBackend,
       iap: AppServices.iapPurchaseService,

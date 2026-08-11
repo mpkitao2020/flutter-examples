@@ -25,34 +25,63 @@ class GmoLinkPayment {
 
   StreamSubscription<ParsedDeepLink>? _sub;
   var _attached = false;
+  final Set<String> _handledPaymentIds = {};
 
   Future<void> attachCompleter() async {
     if (_attached) return;
     _attached = true;
-    _sub = bus.stream.listen((link) async {
-      if (link.kind != DeepLinkKind.gmoComplete) return;
-      final paymentId = link.uri.queryParameters['paymentId'];
-      if (paymentId == null || paymentId.isEmpty) {
-        debugPrint('GmoLinkPayment: missing paymentId');
-        return;
-      }
-      await backend.confirmGmo(paymentId: paymentId);
-      await navigator.openDeepLink(
-        config.webBaseUrl.replace(path: '/pay/done'),
-      );
+    _sub = bus.stream.listen((link) {
+      unawaited(_onLink(link));
     });
   }
 
-  Future<void> startCheckout({required String productId}) async {
+  Future<void> _onLink(ParsedDeepLink link) async {
+    if (link.kind != DeepLinkKind.gmoComplete) return;
+    final paymentId = link.uri.queryParameters['paymentId']?.trim();
+    if (paymentId == null || paymentId.isEmpty) {
+      debugPrint('GmoLinkPayment: missing paymentId');
+      return;
+    }
+    if (_handledPaymentIds.contains(paymentId)) {
+      debugPrint('GmoLinkPayment: duplicate paymentId=$paymentId');
+      return;
+    }
+    _handledPaymentIds.add(paymentId);
+    try {
+      await backend.confirmGmo(paymentId: paymentId);
+    } catch (error, stack) {
+      _handledPaymentIds.remove(paymentId);
+      debugPrint('GmoLinkPayment: confirm failed $error');
+      debugPrint('$stack');
+      return;
+    }
+    try {
+      await navigator.openDeepLink(
+        config.webBaseUrl.replace(path: '/pay/done'),
+      );
+    } catch (error, stack) {
+      // Confirm already succeeded — keep paymentId handled to avoid re-confirm.
+      debugPrint('GmoLinkPayment: navigate failed $error');
+      debugPrint('$stack');
+    }
+  }
+
+  /// Opens the external GMO checkout. Returns false if the URL could not launch.
+  Future<bool> startCheckout({required String productId}) async {
     final session = await backend.createGmoLink(productId: productId);
-    await launchUrlFn(
+    final launched = await launchUrlFn(
       session.checkoutUrl,
       mode: LaunchMode.externalApplication,
     );
+    if (!launched) {
+      debugPrint('GmoLinkPayment: failed to launch ${session.checkoutUrl}');
+    }
+    return launched;
   }
 
   Future<void> dispose() async {
     await _sub?.cancel();
     _sub = null;
+    _attached = false;
   }
 }

@@ -133,6 +133,7 @@ AppBar「購入」から手段を選択する。商品 ID は **`lunarabi.credit
 - **復元 UI は置かない**（consumable のため）
 - サンドボックス: iOS は Sandbox アカウント、Android はライセンステスター
 - PSP 秘密鍵・GMO ショップ認証情報はアプリに入れない（バックエンドのみ）
+- 現状の `AppServices.paymentBackend` は **Fake**（confirm は no-op）。本番前に実 API クライアントへ差し替えること
 
 ### iOS ガイドライン
 

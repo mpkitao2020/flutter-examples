@@ -46,12 +46,23 @@ class IapPurchaseService {
   IapPurchaseService({
     IapStore? store,
     this.sourceOverride,
+    this.buyTimeout = const Duration(minutes: 2),
   }) : _store = store ?? PluginIapStore();
 
   final IapStore _store;
 
   /// When set (tests), skips [defaultTargetPlatform] mapping.
   final String? sourceOverride;
+
+  /// Caps how long [buy] waits for a terminal purchase event.
+  final Duration buyTimeout;
+
+  final Set<String> _handledPurchaseKeys = {};
+
+  String _key(PurchaseDetails purchase) {
+    return purchase.purchaseID ??
+        '${purchase.productID}:${purchase.verificationData.serverVerificationData}:${purchase.status}';
+  }
 
   Future<PaymentStatus> buy({
     required ProductRef product,
@@ -68,24 +79,43 @@ class IapPurchaseService {
 
     final details = response.productDetails.first;
     final completer = Completer<PaymentStatus>();
+    // Purchases observed before buyConsumable must not complete this session.
+    final seenBeforeBuy = <String>{};
+    var buyLaunched = false;
+
     late final StreamSubscription<List<PurchaseDetails>> sub;
     sub = _store.purchaseStream.listen((purchases) async {
       for (final purchase in purchases) {
         if (purchase.productID != product.id) continue;
+        final key = _key(purchase);
+
+        if (!buyLaunched) {
+          // Only remember unfinished *purchased* txs so pending/canceled IDs
+          // cannot poison a later purchased event with the same purchaseID.
+          if (purchase.status == PurchaseStatus.purchased) {
+            seenBeforeBuy.add(key);
+            await _confirmPurchased(
+              purchase: purchase,
+              product: product,
+              backend: backend,
+            );
+          }
+          continue;
+        }
+
+        if (seenBeforeBuy.contains(key)) continue;
+
         switch (purchase.status) {
           case PurchaseStatus.purchased:
-            final source = sourceOverride ??
-                (defaultTargetPlatform == TargetPlatform.iOS
-                    ? 'app_store'
-                    : 'google_play');
-            await backend.confirmIap(
-              productId: product.id,
-              verificationData: purchase.verificationData.serverVerificationData,
-              source: source,
+            if (completer.isCompleted) break;
+            if (_handledPurchaseKeys.contains(key)) break;
+            final ok = await _confirmPurchased(
+              purchase: purchase,
+              product: product,
+              backend: backend,
             );
-            await _store.completePurchase(purchase);
             if (!completer.isCompleted) {
-              completer.complete(PaymentStatus.success);
+              completer.complete(ok ? PaymentStatus.success : PaymentStatus.failure);
             }
           case PurchaseStatus.error:
           case PurchaseStatus.canceled:
@@ -95,11 +125,15 @@ class IapPurchaseService {
           case PurchaseStatus.pending:
             break;
           case PurchaseStatus.restored:
-            // Consumable: ignore restore path.
+            // Consumable: ignore restore path for this buy session.
             break;
         }
       }
     });
+
+    // Drain any immediate backlog before accepting new buy events.
+    await Future<void>.delayed(Duration.zero);
+    buyLaunched = true;
 
     final started = await _store.buyConsumable(
       purchaseParam: PurchaseParam(productDetails: details),
@@ -109,11 +143,40 @@ class IapPurchaseService {
       return PaymentStatus.failure;
     }
 
-    final result = await completer.future.timeout(
-      const Duration(minutes: 2),
-      onTimeout: () => PaymentStatus.failure,
-    );
-    await sub.cancel();
-    return result;
+    try {
+      return await completer.future.timeout(
+        buyTimeout,
+        onTimeout: () => PaymentStatus.failure,
+      );
+    } finally {
+      await sub.cancel();
+    }
+  }
+
+  Future<bool> _confirmPurchased({
+    required PurchaseDetails purchase,
+    required ProductRef product,
+    required PaymentBackendClient backend,
+  }) async {
+    final key = _key(purchase);
+    if (_handledPurchaseKeys.contains(key)) return true;
+    _handledPurchaseKeys.add(key);
+
+    final source = sourceOverride ??
+        (defaultTargetPlatform == TargetPlatform.iOS ? 'app_store' : 'google_play');
+    try {
+      await backend.confirmIap(
+        productId: product.id,
+        verificationData: purchase.verificationData.serverVerificationData,
+        source: source,
+      );
+      await _store.completePurchase(purchase);
+      return true;
+    } catch (error, stack) {
+      debugPrint('IapPurchaseService: confirm failed $error');
+      debugPrint('$stack');
+      _handledPurchaseKeys.remove(key);
+      return false;
+    }
   }
 }

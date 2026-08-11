@@ -18,6 +18,8 @@ class AppServices {
     auth: authTokenStore,
     push: pushTokenStore,
   );
-  static final paymentBackend = FakePaymentBackendClient();
+  /// Scaffold default. Replace with a real HTTP client before production release.
+  /// Fake confirms are no-ops; UI may still navigate to `/pay/done`.
+  static final PaymentBackendClient paymentBackend = FakePaymentBackendClient();
   static final iapPurchaseService = IapPurchaseService();
 }

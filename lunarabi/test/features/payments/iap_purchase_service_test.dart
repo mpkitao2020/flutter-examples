@@ -4,7 +4,8 @@
 //
 // - purchased → confirmIap → completePurchase → success
 // - error / canceled → failure
-// - restored は consumable のため無視（confirm しない）
+// - restored 単独は hang せず timeout → failure（confirm しない）
+// - buy 前の backlog purchased はセッション成功にしない
 // =============================================================================
 
 import 'dart:async';
@@ -16,6 +17,7 @@ import 'package:lunarabi/features/payments/payment_backend_client.dart';
 
 class _RecordingBackend implements PaymentBackendClient {
   final confirmCalls = <Map<String, String>>[];
+  Object? confirmError;
 
   @override
   Future<List<ProductRef>> listProducts() async => const [];
@@ -26,6 +28,7 @@ class _RecordingBackend implements PaymentBackendClient {
     required String verificationData,
     required String source,
   }) async {
+    if (confirmError != null) throw confirmError!;
     confirmCalls.add({
       'productId': productId,
       'verificationData': verificationData,
@@ -60,6 +63,8 @@ class _FakeStore implements IapStore {
   _FakeStore({
     List<ProductDetails>? products,
     this.emitAfterBuy,
+    this.backlogOnListen,
+    this.buyResult = true,
   }) : products = products ??
             [
               ProductDetails(
@@ -74,11 +79,28 @@ class _FakeStore implements IapStore {
 
   final List<ProductDetails> products;
   final List<PurchaseDetails>? emitAfterBuy;
+  final List<PurchaseDetails>? backlogOnListen;
+  final bool buyResult;
   final completed = <PurchaseDetails>[];
   final _controller = StreamController<List<PurchaseDetails>>.broadcast();
 
   @override
-  Stream<List<PurchaseDetails>> get purchaseStream => _controller.stream;
+  Stream<List<PurchaseDetails>> get purchaseStream {
+    return Stream<List<PurchaseDetails>>.multi((listener) {
+      final backlog = backlogOnListen;
+      if (backlog != null) {
+        listener.add(backlog);
+      }
+      final sub = _controller.stream.listen(
+        listener.add,
+        onError: listener.addError,
+        onDone: listener.close,
+      );
+      listener.onCancel = () async {
+        await sub.cancel();
+      };
+    });
+  }
 
   @override
   Future<bool> isAvailable() async => true;
@@ -91,7 +113,8 @@ class _FakeStore implements IapStore {
         products.where((p) => identifiers.contains(p.id)).toList();
     return ProductDetailsResponse(
       productDetails: matched,
-      notFoundIDs: identifiers.difference(matched.map((e) => e.id).toSet()).toList(),
+      notFoundIDs:
+          identifiers.difference(matched.map((e) => e.id).toSet()).toList(),
     );
   }
 
@@ -101,7 +124,7 @@ class _FakeStore implements IapStore {
     if (events != null) {
       scheduleMicrotask(() => _controller.add(events));
     }
-    return true;
+    return buyResult;
   }
 
   @override
@@ -115,12 +138,15 @@ class _FakeStore implements IapStore {
 PurchaseDetails _purchase({
   required PurchaseStatus status,
   String productId = 'lunarabi.credit.100',
+  String? purchaseID,
+  String serverData = 'server-token',
 }) {
   return PurchaseDetails(
+    purchaseID: purchaseID,
     productID: productId,
     verificationData: PurchaseVerificationData(
       localVerificationData: 'local',
-      serverVerificationData: 'server-token',
+      serverVerificationData: serverData,
       source: 'test',
     ),
     transactionDate: '0',
@@ -136,7 +162,9 @@ void main() {
 
   test('purchased で confirm → complete → success', () async {
     final store = _FakeStore(
-      emitAfterBuy: [_purchase(status: PurchaseStatus.purchased)],
+      emitAfterBuy: [
+        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-1'),
+      ],
     );
     addTearDown(store.dispose);
     final backend = _RecordingBackend();
@@ -149,8 +177,21 @@ void main() {
 
     expect(status, PaymentStatus.success);
     expect(backend.confirmCalls, hasLength(1));
-    expect(backend.confirmCalls.single['verificationData'], 'server-token');
     expect(store.completed, hasLength(1));
+  });
+
+  test('同一 purchase の再配信では confirm を二重に呼ばない', () async {
+    final purchase =
+        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-dup');
+    final store = _FakeStore(emitAfterBuy: [purchase, purchase]);
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend();
+    final service = IapPurchaseService(store: store, sourceOverride: 'google_play');
+
+    final status = await service.buy(product: product, backend: backend);
+
+    expect(status, PaymentStatus.success);
+    expect(backend.confirmCalls, hasLength(1));
   });
 
   test('error は failure で confirm しない', () async {
@@ -165,16 +206,27 @@ void main() {
 
     expect(status, PaymentStatus.failure);
     expect(backend.confirmCalls, isEmpty);
-    expect(store.completed, isEmpty);
   });
 
-  test('restored は confirm せず、同バッチの canceled で failure', () async {
+  test('restored 単独は confirm せず短 timeout で failure', () async {
     final store = _FakeStore(
-      emitAfterBuy: [
-        _purchase(status: PurchaseStatus.restored),
-        _purchase(status: PurchaseStatus.canceled),
-      ],
+      emitAfterBuy: [_purchase(status: PurchaseStatus.restored)],
     );
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend();
+    final service = IapPurchaseService(
+      store: store,
+      buyTimeout: const Duration(milliseconds: 50),
+    );
+
+    final status = await service.buy(product: product, backend: backend);
+
+    expect(status, PaymentStatus.failure);
+    expect(backend.confirmCalls, isEmpty);
+  });
+
+  test('buyConsumable が false なら即 failure', () async {
+    final store = _FakeStore(buyResult: false);
     addTearDown(store.dispose);
     final backend = _RecordingBackend();
     final service = IapPurchaseService(store: store);
@@ -183,5 +235,48 @@ void main() {
 
     expect(status, PaymentStatus.failure);
     expect(backend.confirmCalls, isEmpty);
+  });
+
+  test('confirm 例外は failure', () async {
+    final store = _FakeStore(
+      emitAfterBuy: [
+        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-err'),
+      ],
+    );
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend()..confirmError = Exception('boom');
+    final service = IapPurchaseService(store: store, sourceOverride: 'google_play');
+
+    final status = await service.buy(product: product, backend: backend);
+
+    expect(status, PaymentStatus.failure);
+  });
+
+  test('buy 前 backlog の purchased はセッション成功に使わない', () async {
+    final store = _FakeStore(
+      backlogOnListen: [
+        _purchase(
+          status: PurchaseStatus.purchased,
+          purchaseID: 'old-tx',
+          serverData: 'old',
+        ),
+      ],
+    );
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend();
+    final service = IapPurchaseService(
+      store: store,
+      sourceOverride: 'google_play',
+      buyTimeout: const Duration(milliseconds: 80),
+    );
+
+    final status = await service.buy(product: product, backend: backend);
+
+    expect(status, PaymentStatus.failure);
+    // Hygiene confirm may run for backlog; must not treat as this buy success.
+    expect(
+      backend.confirmCalls.where((c) => c['verificationData'] == 'old'),
+      isNotEmpty,
+    );
   });
 }

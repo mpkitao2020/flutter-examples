@@ -40,4 +40,25 @@ void main() {
     expect(events, hasLength(1));
     expect(events.single.kind, DeepLinkKind.webPath);
   });
+  test('購読者が消えたあとの publish は次の listener に replay される', () async {
+    final bus = DeepLinkBus();
+    addTearDown(bus.dispose);
+
+    final firstSub = bus.stream.listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+    await firstSub.cancel();
+    await Future<void>.delayed(Duration.zero);
+
+    bus.publish(
+      ParsedDeepLink(
+        kind: DeepLinkKind.gmoComplete,
+        uri: Uri.parse(
+          'https://app.lunarabi.example/pay/gmo/complete?paymentId=gap',
+        ),
+      ),
+    );
+
+    final replayed = await bus.stream.first;
+    expect(replayed.uri.queryParameters['paymentId'], 'gap');
+  });
 }

@@ -138,4 +138,118 @@ void main() {
     expect(backend.confirmed, ['early']);
     expect(navigator.opened, hasLength(1));
   });
+
+  test('重複 paymentId は confirm を一度だけ', () async {
+    final config = AppConfig.fromFlavor(Flavor.dev);
+    final bus = DeepLinkBus();
+    final navigator = _FakeNavigator();
+    final backend = _RecordingBackend();
+
+    final gmo = GmoLinkPayment(
+      backend: backend,
+      bus: bus,
+      navigator: navigator,
+      config: config,
+      launchUrlFn: (url, {LaunchMode mode = LaunchMode.externalApplication}) async =>
+          true,
+    );
+    addTearDown(() async {
+      await gmo.dispose();
+      await bus.dispose();
+    });
+
+    await gmo.attachCompleter();
+    final link = ParsedDeepLink(
+      kind: DeepLinkKind.gmoComplete,
+      uri: Uri.parse(
+        'https://app.lunarabi.example/pay/gmo/complete?paymentId=dup',
+      ),
+    );
+    bus.publish(link);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    bus.publish(link);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(backend.confirmed, ['dup']);
+    expect(navigator.opened, hasLength(1));
+  });
+
+  test('空白のみの paymentId は confirm しない', () async {
+    final config = AppConfig.fromFlavor(Flavor.dev);
+    final bus = DeepLinkBus();
+    final navigator = _FakeNavigator();
+    final backend = _RecordingBackend();
+
+    final gmo = GmoLinkPayment(
+      backend: backend,
+      bus: bus,
+      navigator: navigator,
+      config: config,
+      launchUrlFn: (url, {LaunchMode mode = LaunchMode.externalApplication}) async =>
+          true,
+    );
+    addTearDown(() async {
+      await gmo.dispose();
+      await bus.dispose();
+    });
+
+    await gmo.attachCompleter();
+    bus.publish(
+      ParsedDeepLink(
+        kind: DeepLinkKind.gmoComplete,
+        uri: Uri.parse(
+          'https://app.lunarabi.example/pay/gmo/complete?paymentId=%20%20',
+        ),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(backend.confirmed, isEmpty);
+    expect(navigator.opened, isEmpty);
+  });
+
+  test('listener 再bind 中の publish は buffer され replay される', () async {
+    final config = AppConfig.fromFlavor(Flavor.dev);
+    final bus = DeepLinkBus();
+    final navigator = _FakeNavigator();
+    final backend = _RecordingBackend();
+
+    final first = GmoLinkPayment(
+      backend: backend,
+      bus: bus,
+      navigator: navigator,
+      config: config,
+      launchUrlFn: (url, {LaunchMode mode = LaunchMode.externalApplication}) async =>
+          true,
+    );
+    await first.attachCompleter();
+    await first.dispose();
+
+    bus.publish(
+      ParsedDeepLink(
+        kind: DeepLinkKind.gmoComplete,
+        uri: Uri.parse(
+          'https://app.lunarabi.example/pay/gmo/complete?paymentId=rebind',
+        ),
+      ),
+    );
+
+    final second = GmoLinkPayment(
+      backend: backend,
+      bus: bus,
+      navigator: navigator,
+      config: config,
+      launchUrlFn: (url, {LaunchMode mode = LaunchMode.externalApplication}) async =>
+          true,
+    );
+    addTearDown(() async {
+      await second.dispose();
+      await bus.dispose();
+    });
+
+    await second.attachCompleter();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(backend.confirmed, ['rebind']);
+  });
 }

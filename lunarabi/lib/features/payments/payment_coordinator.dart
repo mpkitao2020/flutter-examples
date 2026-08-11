@@ -39,13 +39,23 @@ class PaymentCoordinator {
     switch (method) {
       case PaymentMethod.storeIap:
         final status = await iap.buy(product: product, backend: backend);
+        if (!context.mounted) return;
         if (status == PaymentStatus.success) {
           await navigator.openDeepLink(
             config.webBaseUrl.replace(path: '/pay/done'),
           );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('購入を完了できませんでした')),
+          );
         }
       case PaymentMethod.gmoLink:
-        await gmo.startCheckout(productId: product.id);
+        final launched = await gmo.startCheckout(productId: product.id);
+        if (!launched && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('決済ページを開けませんでした')),
+          );
+        }
       case PaymentMethod.aozoraTransfer:
         final session = await backend.createAozoraTransfer(
           productId: product.id,
