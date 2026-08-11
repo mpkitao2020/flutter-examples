@@ -68,7 +68,7 @@ Base: each branch stacks on the previous after merge, starting from `cursor/luna
 
 ### Navigation rules
 
-`NavigationDelegate.onNavigationRequest` evaluates every request:
+`NavigationDelegate.onNavigationRequest` evaluates every **top-level** navigation request observable by `webview_flutter`:
 
 | URI | Action |
 |---|---|
@@ -83,17 +83,50 @@ Deep links / push still use `HostGuard` + `AppNavigator`.
 
 | Concern | Allowed set |
 |---|---|
-| In-WebView navigation / deep-link input | `{webBaseUrl.host, deepLinkHost}` via HostGuard |
-| Trusted bridge origin (may receive Sanctum token / sensitive bridge replies) | **`webBaseUrl.host` only** (https). `deepLinkHost` is **not** trusted for auth material unless it is identical to `webBaseUrl.host` |
+| In-WebView **top-level** navigation / deep-link input (observable by `webview_flutter`) | `{webBaseUrl.host, deepLinkHost}` via HostGuard |
+| Trusted bridge origin (privileged bridge) | **Full origin from `webBaseUrl`**: scheme + host + effective port. `deepLinkHost` is **not** trusted unless identical to that origin |
+
+Do **not** claim coverage of every subresource, iframe navigation, or POST that the platform may not surface to `onNavigationRequest`. Requirement is every **top-level** navigation the plugin reports.
+
+### TrustedBridgeOrigin
+
+```dart
+bool isTrustedBridgeOrigin(Uri? committed, Uri webBaseUrl) {
+  if (committed == null) return false;
+  if (committed.scheme != webBaseUrl.scheme) return false;
+  if (committed.host != webBaseUrl.host) return false;
+  return committed.hasPort == webBaseUrl.hasPort
+      ? committed.port == webBaseUrl.port
+      : committed.port == webBaseUrl.port; // compare effective ports
+}
+```
+
+**Privileged Web→Flutter** (must call `requireTrustedBridgeOrigin()` first; else `{ok:false,error:'forbidden_origin'}`):
+
+- `auth.setBearerToken`, `auth.clearBearerToken`, `auth.getStoredToken`
+- `push.getToken` (if exposed)
+- `iap.start`, `iap.confirmResult`
+
+**Privileged Flutter→Web** (emit only when committed URL is trusted; otherwise skip/log):
+
+- `push.setToken` (including ready replay)
+- `iap.purchaseUpdated`, `iap.finished`
+
+**Bridge inject policy:** On non-trusted allowed pages (`deepLinkHost ≠ webBaseUrl` origin), either:
+
+1. **Preferred:** do not inject bootstrap / do not emit `bridge.ready`, **or**
+2. Inject a **reduced** bridge that cannot reach auth / push token / IAP handlers
+
+Branch 1 must expose the committed-URL + `isTrustedBridgeOrigin` helper so branches 2–4 share one gate. Tests: `deepLinkHost != webBaseUrl.host` and same-host different-port both fail every privileged command and receive no sensitive events.
 
 ### Committed main-frame URL state
 
-Branch 1 owns a navigation state object used by later auth:
+Branch 1 owns a navigation state object used by later privileged bridge:
 
 - Clear committed URL on main-frame page start / navigation begin
 - Set committed URL only after an **allowed** main-frame navigation is finished (`onPageFinished` for allowed https hosts)
-- Auth and other sensitive bridge handlers read this object — not an ad-hoc `WebViewController` sync call
-- Stale URL during in-flight navigation ⇒ treat as untrusted (no token return)
+- All privileged handlers read this object — not an ad-hoc `WebViewController` sync call
+- Stale URL during in-flight navigation ⇒ treat as untrusted
 
 ### Back navigation
 
@@ -104,16 +137,15 @@ Branch 1 owns a navigation state object used by later auth:
 ### Bridge lifecycle
 
 1. Register JS channel before first `loadRequest` (`ensureChannel` once)
-2. On every allowed main-frame `onPageFinished`, reinject bootstrap JS (`injectBootstrap`)
-3. Emit `bridge.ready` with `{ platform }` after each reinject
-4. Do not load non-allowed documents in WebView (navigation already blocked)
+2. On every **trusted** main-frame `onPageFinished`, reinject full bootstrap + emit `bridge.ready` (or reinject reduced bridge on non-trusted allowed pages — see TrustedBridgeOrigin)
+3. Do not load non-allowed documents in WebView (navigation already blocked)
 
 ### Bridge sender-origin limitation (release gate)
 
 `webview_flutter` JavaScript channels do **not** expose a reliable per-message sender frame origin. Therefore:
 
-1. Native gate returns sensitive data only when **committed top-level URL** is a trusted bridge origin (`webBaseUrl.host`)
-2. **External release blocker (Web owner):** SPA must forbid untrusted third-party frames that can reach the native channel (no untrusted iframes embedding the bridge page; CSP `frame-ancestors` / frame restrictions as appropriate). Documented in frontend contract + README external gates — **not** marked done by Flutter tests alone
+1. Native applies **TrustedBridgeOrigin** to all privileged commands and sensitive events (not only token read)
+2. **External release blocker (Web owner):** SPA must forbid untrusted third-party frames that can reach the native channel (no untrusted iframes; CSP / `frame-ancestors` as appropriate). Closing evidence required in checklist (CSP snippet or header dump + owner sign-off) — **not** marked done by Flutter tests alone
 
 ### External launch failure
 
@@ -162,9 +194,9 @@ Forbidden origin:
 
 ### Security rules
 
-- Return token **only** when committed main-frame URL host is a **trusted bridge origin** (`webBaseUrl.host`), **not** merely HostGuard-allowed / `deepLinkHost`
-- Tests must assert: `webBaseUrl` may read; distinct `deepLinkHost` must not
-- Web keeps token in memory only (not localStorage) — **external Web gate**
+- **All** auth bridge commands (set / clear / getStored) require TrustedBridgeOrigin
+- Tests must assert: trusted `webBaseUrl` origin may set/clear/read; distinct `deepLinkHost` and same-host different-port must not
+- Web keeps token in memory only (not localStorage) — **external Web gate** (acceptance: manual steps + owner sign-off)
 - Masked logs only
 - Laravel must revoke token on logout; Web then clears native storage — **external gates**
 
@@ -209,10 +241,11 @@ Forbidden origin:
 ### Ownership: ready replay
 
 - **PushService** owns publishing `push.setToken` (including platform)
-- **BridgeHost** emits `bridge.ready` and exposes an `onReady` / ready callback hook
-- PushService registers for ready and, if `PushTokenStore` has a token, publishes again
+- **BridgeHost** emits `bridge.ready` only on trusted pages (or after full bootstrap) and exposes `onReady`
+- PushService registers for ready and, if token stored **and** committed URL is TrustedBridgeOrigin, publishes again
+- Never replay token to `deepLinkHost`-only pages
 - BridgeHost must **not** silently own token replay after branch 3 (single owner)
-- Test: `injectBootstrap` twice ⇒ two `bridge.ready` and two `push.setToken` (when token stored)
+- Test: two trusted injectBootstraps ⇒ two ready + two push.setToken; non-trusted page ⇒ zero push.setToken
 
 ### Changes
 
@@ -268,11 +301,12 @@ Capability wiring is in branch 5. Without it, token acquisition may fail on devi
 
 ### Durable pending recovery
 
-Persisted pending record (Secure Storage or equivalent durable store), keyed by purchase id:
+Persisted pending record (Secure Storage or equivalent durable store):
 
 | Field | Purpose |
 |---|---|
-| `purchaseId` | Dedup key |
+| `purchaseKey` | Stable key: `purchaseID` if non-null, else `{platform}:{productId}:{serverVerificationData}` |
+| `purchaseId` | Store purchaseID when present (may be null historically) |
 | `productId` | Store product |
 | `platform` | `app_store` / `google_play` |
 | `verificationData` | serverVerificationData |
@@ -280,12 +314,28 @@ Persisted pending record (Secure Storage or equivalent durable store), keyed by 
 | `waitingConfirm` | bool |
 | `updatedAt` | diagnostics |
 
+**PurchaseDetails rehydration:**
+
+- `completePurchase` requires a live Store `PurchaseDetails`
+- On restart: match durable pending to unfinished Store stream txs by `purchaseKey`
+- If only durable record exists (Store has not re-emitted yet): re-emit `iap.purchaseUpdated` for Web verify, but **do not** complete until a live Store transaction is matched
+- Dedupe emits by `purchaseKey`
+
+**confirmResult rules:**
+
+- Matching `ok:true` → complete exactly once, then remove pending
+- Duplicate `ok:true` after completion → bridge error; no second complete
+- Stale confirm (pending removed / unknown key) → bridge error; never complete
+- Late `ok` after timeout → if pending still waiting and live Store tx present, treat as first ok; if already finished failed and pending kept, documented: accept ok only while `waitingConfirm` and live tx matched; else error
+- Confirm before waiting-confirm state → error; never complete
+
 Behavior:
 
 - App-lifetime purchase stream observer starts at app start (not per-buy)
-- On **startup** and **resume**: load durable pending + unfinished Store txs; emit `iap.purchaseUpdated` again (dedupe by purchaseId)
-- After Web reload: when `bridge.ready` fires while waiting confirm, re-emit `iap.purchaseUpdated` for pending purchased txs so Web can re-verify
-- Never `completePurchase` until Web confirms ok
+- On **startup** and **resume**: load durable pending + unfinished Store txs; emit `iap.purchaseUpdated` again (dedupe by purchaseKey)
+- After Web reload: when trusted `bridge.ready` fires while waiting confirm, re-emit for pending purchased txs
+- `iap.start` / `iap.confirmResult` / receipt emits require TrustedBridgeOrigin
+- Never `completePurchase` until Web confirms ok **and** live Store tx is available
 
 ### Bridge dispatch wiring (no cyclic globals)
 
@@ -350,15 +400,17 @@ Android release signing and real Firebase files remain configuration tasks, not 
 
 Owner: Web / DevOps / Store compliance (outside this repo's Flutter branches)
 
-| Gate | Why |
+Each gate needs an **acceptance artifact** in the final checklist (not just a label): evidence field + owner + date.
+
+| Gate | Acceptance artifact |
 |---|---|
-| SPA forbids untrusted frames that can reach the JS bridge channel | Native cannot verify JS channel sender origin |
-| Web: token memory-only; getStoredToken after ready; clear on 401 | Auth restore contract |
-| Web: FCM registration API on `push.setToken` | Native no longer registers |
-| Web/Laravel: IAP verify API + idempotent grant | Flutter completes only after ok |
-| Real Firebase / APNs / domains / AASA / assetlinks / release signing | Config |
-| Production `aps-environment` if not config-switched in branch 5 | Push prod |
-| Japan GMO/Aozora Store compliance | Separate phase |
+| SPA forbids untrusted frames / CSP for bridge page | CSP header dump or `frame-ancestors` / iframe policy snippet + owner sign-off |
+| Web: token memory-only; getStoredToken after ready; clear on 401 | Manual test steps logged + owner sign-off |
+| Web: FCM registration API on `push.setToken` | Endpoint name + manual or staging log + owner sign-off |
+| Web/Laravel: IAP verify API + idempotent grant | Endpoint name + sandbox verify log + owner sign-off |
+| Real Firebase / APNs / domains / AASA / assetlinks / release signing | Config checklist ticks |
+| Production `aps-environment` if not config-switched in branch 5 | Entitlements screenshot or pbxproj Release value |
+| Japan GMO/Aozora Store compliance | Separate phase tracker |
 
 ## Testing strategy
 

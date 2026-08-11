@@ -15,8 +15,9 @@
 
 - Native allowlist: only `lunarabi.credit.100` (reject others before Store sheet)
 - Consumable only; no restore UI
-- `completePurchase` **and** consume only after `iap.confirmResult.ok == true`
+- `completePurchase` **and** consume only after `iap.confirmResult.ok == true` **and** live Store `PurchaseDetails` matched
 - On ok:false / timeout / cancel / error: **never** complete or consume; leave unfinished for recovery
+- `iap.start`, `iap.confirmResult`, and emits of `iap.purchaseUpdated` / `iap.finished` require TrustedBridgeOrigin
 - Spec §4
 
 ---
@@ -63,7 +64,8 @@ abstract interface class IapStore {
 }
 
 class IapPendingRecord {
-  final String purchaseId;
+  final String purchaseKey; // purchaseID ?? '$platform:$productId:$verificationData'
+  final String? purchaseId;
   final String productId;
   final String platform;
   final String verificationData;
@@ -73,9 +75,9 @@ class IapPendingRecord {
 
 abstract interface class IapPendingStore {
   Future<void> upsert(IapPendingRecord record);
-  Future<IapPendingRecord?> get(String purchaseId);
+  Future<IapPendingRecord?> getByKey(String purchaseKey);
   Future<List<IapPendingRecord>> allWaiting();
-  Future<void> remove(String purchaseId);
+  Future<void> remove(String purchaseKey);
 }
 
 class IapBridgeController {
@@ -83,6 +85,8 @@ class IapBridgeController {
     required IapPurchaseService iap,
     required BridgeHost bridge,
     required IapPendingStore pending,
+    required Uri? Function() committedWebUri,
+    required Uri webBaseUrl,
     this.allowedProductIds = const {'lunarabi.credit.100'},
     this.confirmTimeout = const Duration(minutes: 2),
   });
@@ -90,20 +94,22 @@ class IapBridgeController {
   Future<void> handleFromJs(BridgeMessage message);
   Future<void> startPurchaseStream(); // app lifetime
   Future<void> onAppResumed();
-  Future<void> onBridgeReady(); // re-emit waiting purchased txs
+  Future<void> onBridgeReady(); // re-emit waiting purchased txs if trusted
 }
 ```
 
 Behavior:
-1. On `iap.start`, reject unknown productId (finished failed / bridge error) before Store
+1. On `iap.start`: require TrustedBridgeOrigin; reject unknown productId before Store
 2. Begin buy with `autoConsume: false`
-3. On store purchased: persist pending (`waitingConfirm: true`), emit purchaseUpdated, wait for matching confirmResult (timeout e.g. 2 min)
-4. ok true → completePurchase → remove pending → finished completed
+3. On store purchased: compute purchaseKey; persist pending (`waitingConfirm: true`); emit purchaseUpdated **only if trusted**; wait for matching confirmResult (timeout e.g. 2 min)
+4. ok true + live PurchaseDetails matched by purchaseKey → completePurchase exactly once → remove pending → finished completed
 5. ok false / timeout → **do not** completePurchase / consume; keep pending; finished failed
 6. canceled/error → finished canceled/failed without waiting confirm; no complete
-7. Tests assert fake store: zero complete/consume calls before ok:true; unknown product never calls buyConsumable
+7. confirmResult rules: duplicate ok after complete → error; stale/unknown key → error never complete; confirm before waiting → error; late ok after timeout only if still `waitingConfirm` + live tx
+8. Rehydration: if durable pending exists without live Store tx, re-emit for Web but delay complete until Store re-emits matching tx
+9. Tests assert fake store: zero complete/consume before ok:true; unknown product never buyConsumable; deepLinkHost cannot start/confirm or receive receipt events
 
-- [ ] **Step 1: Failing tests** happy path, cancel, confirm false, timeout, unknown product, no-complete-before-ok
+- [ ] **Step 1: Failing tests** happy path, cancel, confirm false, timeout, unknown product, no-complete-before-ok, duplicate/stale/unknown confirm, deepLinkHost forbidden, rehydrate-without-live-tx-no-complete
 - [ ] **Step 2: Implement store flag + pending store + controller**
 - [ ] **Step 3: Commit** `feat(lunarabi): add IapBridgeController with gated complete`
 
@@ -155,8 +161,10 @@ Include example JS for:
 ## Self-review checklist
 
 - [ ] No native payment sheet required for IAP
-- [ ] autoConsume false; complete gated on Web ok
-- [ ] Durable pending recovery across death + Web reload
+- [ ] autoConsume false; complete gated on Web ok + live PurchaseDetails
+- [ ] Durable pending recovery + rehydration contract
+- [ ] confirmResult stale/duplicate/unknown rules
+- [ ] TrustedBridgeOrigin on start/confirm/emits
 - [ ] Native product allowlist
 - [ ] No BridgeHost ↔ IapBridgeController constructor cycle
 - [ ] Spec §4 covered

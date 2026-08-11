@@ -13,8 +13,9 @@
 
 ## Global Constraints
 
-- Allowed navigation hosts: `config.webBaseUrl.host` and `config.deepLinkHost`, scheme `https` only for in-app
-- Trusted bridge origin (auth material) is **not** this plan's deliverable, but committed URL state must be ready for it
+- Allowed **top-level** navigation hosts: `config.webBaseUrl.host` and `config.deepLinkHost`, scheme `https` only for in-app (plugin-observable navigations; not every subresource/iframe)
+- Deliver reusable `TrustedBridgeOrigin` helper (scheme+host+effective port from `webBaseUrl`) + committed URL state for branches 2–4
+- Prefer: full bridge bootstrap + `bridge.ready` **only** on trusted pages; non-trusted allowed pages get no/reduced bridge
 - No AppBar back button
 - No AppBar「購入」
 - Android back: WebView history then system exit; iOS: no interactive-pop shell requirement
@@ -63,20 +64,22 @@ Rules:
 
 **Behavior:**
 - Inject `Future<bool> Function(Uri,{LaunchMode}) launchUrlFn` defaulting to `launchUrl`
-- `onNavigationRequest`: switch on policy; `NavigationDecision.navigate` / `prevent`
+- `onNavigationRequest` for **top-level** requests the plugin reports: switch on policy; `NavigationDecision.navigate` / `prevent`
 - External: `LaunchMode.externalApplication`
 - On launch failure: log; still prevent in-WebView navigation
-- **Committed URL state:**
-  - clear on main-frame page start / navigation begin
+- **Committed URL + TrustedBridgeOrigin:**
+  - Create `trusted_bridge_origin.dart` with `isTrustedBridgeOrigin(Uri? committed, Uri webBaseUrl)` (scheme+host+effective port)
+  - clear committed URL on main-frame page start / navigation begin
   - set only on allowed main-frame `onPageFinished`
-  - expose `Uri? get committedUri` for later BridgeHost auth
+  - expose `Uri? get committedUri` and `bool get isTrusted` for later BridgeHost
 - README note: Android package visibility / iOS mailto|tel scheme limits
 
 - [ ] **Step 1: Failing test** — evil host calls launchUrlFn and prevents navigation
 - [ ] **Step 2: Failing test** — launchUrlFn returns false; navigation still prevented; committed URL not set to evil host
 - [ ] **Step 3: Failing test** — committed URL cleared on page start, set after allowed finish
-- [ ] **Step 4: Implement**
-- [ ] **Step 5: Commit** `feat(lunarabi): enforce HostGuard on WebView navigations`
+- [ ] **Step 4: Failing test** — same-host different-port is not trusted vs webBaseUrl
+- [ ] **Step 5: Implement**
+- [ ] **Step 6: Commit** `feat(lunarabi): enforce HostGuard on WebView navigations`
 
 ---
 
@@ -88,15 +91,17 @@ Rules:
 - Test: `lunarabi/test/features/bridge/bridge_host_test.dart`
 
 **Behavior:**
-- Split `attach` into `ensureChannel` (once) + `injectBootstrap` (every allowed page finish)
+- Split `attach` into `ensureChannel` (once) + `injectBootstrap` (every **trusted** page finish for full bridge)
 - Expose `VoidCallback? onReady` (or stream) invoked after each `bridge.ready` emit — later PushService will subscribe (branch 3); no token replay ownership here yet
 - Call `ensureChannel` before first `loadRequest`
-- On each allowed `onPageFinished`, reinject bootstrap + `bridge.ready`
+- On trusted `onPageFinished`: reinject full bootstrap + `bridge.ready`
+- On non-trusted allowed finish (`deepLinkHost` only): **no** full bootstrap / **no** `bridge.ready` (or reduced nav-only stub — document choice in README)
 - Remove `_bridgeAttached` early-return that blocks reinject
 
-- [ ] **Step 1: Test** injectBootstrap can run twice without requiring second addJavaScriptChannel; two bridge.ready emissions
-- [ ] **Step 2: Implement**
-- [ ] **Step 3: Commit** `fix(lunarabi): reinject bridge bootstrap on each page`
+- [ ] **Step 1: Test** injectBootstrap twice on trusted pages without second addJavaScriptChannel; two bridge.ready
+- [ ] **Step 2: Test** non-trusted allowed page finish does not emit bridge.ready / does not expose privileged bridge
+- [ ] **Step 3: Implement**
+- [ ] **Step 4: Commit** `fix(lunarabi): reinject bridge bootstrap on each trusted page`
 
 ---
 
@@ -122,8 +127,10 @@ Rules:
 
 ## Self-review checklist
 
-- [ ] Spec §1 navigation matrix covered (incl. launch failure)
-- [ ] Committed URL state ready for trusted-origin auth
+- [ ] TrustedBridgeOrigin helper (scheme+host+port) landed
+- [ ] Full bridge only on trusted pages
+- [ ] Spec §1 navigation matrix covered (top-level; incl. launch failure)
+- [ ] Committed URL state ready for privileged bridge
 - [ ] Bridge reinject + onReady hook covered
 - [ ] Purchase AppBar removed
 - [ ] No AppBar back button added

@@ -105,9 +105,11 @@ Info.plist:
 </array>
 ```
 
-- [ ] **Step 1: Grep test or script asserting CODE_SIGN_ENTITLEMENTS and aps-environment exist**
-- [ ] **Step 2: Apply pbxproj/plist/entitlements edits**
-- [ ] **Step 3: Commit** `fix(ios): attach entitlements and enable push background mode`
+- [ ] **Step 1: Grep is insufficient** — write a small parser/test that asserts Runner **Debug, Profile, and Release** build configurations each set `CODE_SIGN_ENTITLEMENTS`
+- [ ] **Step 2:** If Release uses a separate entitlements file, assert it points at the production file and that file has `aps-environment=production`
+- [ ] **Step 3:** Assert `UIBackgroundModes` / `remote-notification` is in `Runner/Info.plist` specifically
+- [ ] **Step 4: Apply pbxproj/plist/entitlements edits**
+- [ ] **Step 5: Commit** `fix(ios): attach entitlements and enable push background mode`
 
 ---
 
@@ -126,16 +128,16 @@ Checklist must **separate**:
 - IAP bridge + gated complete + durable recovery
 - Nav SVG + entitlements attached
 
-**External release gates (not done by Flutter tests):**
+**External release gates (not done by Flutter tests) — each needs evidence + owner + date:**
 - Replace Firebase placeholders
 - Real domains + AASA/assetlinks
 - Release signing
-- SPA frame/CSP policy for bridge
-- Web: auth restore, FCM register API, IAP verify bridge
-- Production `aps-environment` if not config-switched
+- SPA frame/CSP policy for bridge (artifact: CSP snippet/header dump)
+- Web: auth restore, FCM register API, IAP verify bridge (artifact: endpoint names + staging logs)
+- Production `aps-environment` if not config-switched (artifact: Release entitlements value)
 - Japan external payment compliance still open for GMO/Aozora
 
-- [ ] **Step 1: Write checklist with explicit External release gates section**
+- [ ] **Step 1: Write checklist with External release gates + acceptance artifact fields**
 - [ ] **Step 2: `fvm flutter test` full**
 - [ ] **Step 3: Commit** `docs(lunarabi): add production hardening checklist`
 

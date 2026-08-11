@@ -14,9 +14,11 @@
 ## Global Constraints
 
 - Single Sanctum token (no refresh token)
-- Trusted bridge origin = `config.webBaseUrl.host` (https only). Distinct `deepLinkHost` must **not** receive token
-- Web must not put token in localStorage — **external gate** (README + contract)
-- SPA must forbid untrusted frames that can reach the JS channel — **external release gate**
+- Trusted bridge origin = full origin from `config.webBaseUrl` (scheme+host+effective port) via shared helper from branch 1
+- **All** auth commands (set/clear/getStored) require TrustedBridgeOrigin — not getStored only
+- Distinct `deepLinkHost` and same-host different-port must not set/clear/read
+- Web must not put token in localStorage — **external gate** (README + contract + acceptance artifact)
+- SPA must forbid untrusted frames — **external release gate** with CSP/snippet evidence field
 - Spec §2
 
 ---
@@ -74,27 +76,23 @@ class BridgeHost {
   BridgeHost({
     required AuthTokenRepository authRepo,
     required Uri? Function() committedWebUri, // from WebViewCommittedUrl
-    required String trustedBridgeHost, // webBaseUrl.host
+    required Uri webBaseUrl, // TrustedBridgeOrigin baseline
     ...
   });
 }
 
-bool isTrustedBridgeOrigin(Uri? uri, String trustedHost) {
-  return uri != null &&
-      uri.scheme == 'https' &&
-      uri.host == trustedHost;
-}
+// reuse branch-1 isTrustedBridgeOrigin(committed, webBaseUrl)
 ```
 
-Dispatch:
-- `auth.setBearerToken` → `authRepo.save`
-- `auth.clearBearerToken` → `authRepo.clear`
-- `auth.getStoredToken` → if `isTrustedBridgeOrigin(committedWebUri(), trustedBridgeHost)` return token; else `{ok:false,error:'forbidden_origin'}`
+Dispatch (every auth command gated first):
+- `auth.setBearerToken` → require trusted → `authRepo.save`; else forbidden_origin
+- `auth.clearBearerToken` → require trusted → `authRepo.clear`; else forbidden_origin
+- `auth.getStoredToken` → require trusted → return token; else `{ok:false,error:'forbidden_origin'}`
 - Null / in-flight (cleared) committed URI ⇒ forbidden
 
-- [ ] **Step 1: Tests** webBaseUrl returns token; distinct deepLinkHost forbidden; null committed forbidden; clear works; getBearerToken forbidden
+- [ ] **Step 1: Tests** trusted origin set/clear/read ok; distinct deepLinkHost forbidden for set/clear/read; same-host different-port forbidden; null committed forbidden; getBearerToken forbidden
 - [ ] **Step 2: Implement**
-- [ ] **Step 3: Write frontend contract (auth) + README external gates**
+- [ ] **Step 3: Write frontend contract (auth + privileged messages require trusted origin) + README external gates with acceptance artifact fields**
 - [ ] **Step 4: Commit** `feat(lunarabi): bridge auth restore via Secure Storage`
 
 ---
@@ -114,7 +112,7 @@ Dispatch:
 ## Self-review checklist
 
 - [ ] No arbitrary getBearerToken leak
-- [ ] Trusted-origin check (not HostGuard-only) before return
-- [ ] deepLinkHost ≠ webBaseUrl cannot read token
-- [ ] Frontend contract created on this branch
+- [ ] Trusted-origin check on set/clear/get (full origin, not host-only)
+- [ ] deepLinkHost ≠ webBaseUrl and different-port cannot mutate/read auth
+- [ ] Frontend contract created with privileged-message section
 - [ ] Spec §2 covered

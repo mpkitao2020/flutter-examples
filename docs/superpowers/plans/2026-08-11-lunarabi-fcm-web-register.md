@@ -71,16 +71,18 @@ Future<void> _publishToken(String token) async {
 
 ---
 
-### Task 3: PushService owns resend on bridge.ready
+### Task 3: PushService owns resend on bridge.ready (trusted only)
 
 **Files:**
-- Modify: `push_service.dart` — subscribe to `BridgeHost.onReady` (from branch 1); if store has token, call `notifyPushToken` again with platform
+- Modify: `push_service.dart` — subscribe to `BridgeHost.onReady` (from branch 1); if store has token **and** committed URL is TrustedBridgeOrigin, call `notifyPushToken` again with platform
+- `notifyPushToken` / ready replay must **not** emit when on non-trusted allowed page
 - Ensure BridgeHost does **not** also auto-replay token (single owner)
 - Update frontend contract if needed
 
-- [ ] **Step 1: Test** injectBootstrap twice with stored token ⇒ two bridge.ready + two push.setToken (platform included)
-- [ ] **Step 2: Implement ownership wiring**
-- [ ] **Step 3: Commit** `fix(lunarabi): PushService resends token after bridge.ready`
+- [ ] **Step 1: Test** two trusted injectBootstraps with stored token ⇒ two bridge.ready + two push.setToken (platform included)
+- [ ] **Step 2: Test** non-trusted page ⇒ zero push.setToken replay
+- [ ] **Step 3: Implement ownership wiring**
+- [ ] **Step 4: Commit** `fix(lunarabi): PushService resends token after trusted bridge.ready`
 
 ---
 
