@@ -46,7 +46,7 @@ void main() {
       expect(sourcesIndex, isNonNegative);
       expect(preflightIndex, lessThan(sourcesIndex));
 
-      final preflight = buildPhases[preflightIndex].body;
+      final preflight = buildPhases[preflightIndex].shellScript;
       expect(preflight, contains(r'bash "${SRCROOT}/../tool/verify_release_inputs.sh"'));
       expect(preflight, contains(r'CONFIGURATION'));
       expect(preflight, contains(r'Release'));
@@ -279,6 +279,19 @@ class PbxBuildPhase {
   final String id;
   final String comment;
   final String body;
+
+  String get shellScript {
+    final match = RegExp(
+      r'shellScript = "(?<script>(?:[^"\\]|\\.)*)";',
+    ).firstMatch(body);
+    if (match == null) {
+      return '';
+    }
+    return match.namedGroup('script')!.replaceAll(r'\"', '"').replaceAll(
+      r'\n',
+      '\n',
+    );
+  }
 }
 
 String? plistStringValue(String plist, String key) {
