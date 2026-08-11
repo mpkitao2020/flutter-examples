@@ -22,7 +22,6 @@ Future<void> main() async {
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-
   const rawFlavor = String.fromEnvironment('FLAVOR');
   final flavor = parseFlavor(rawFlavor, isRelease: kReleaseMode);
   final config = AppConfig.fromFlavor(flavor);
@@ -138,12 +137,6 @@ class _LunarabiAppState extends State<LunarabiApp> {
         authTokenStore: AppServices.authTokenStore,
         pushTokenStore: AppServices.pushTokenStore,
         bridgeHost: AppServices.bridgeHost,
-        onPurchasePressed: (context, navigator) async {
-          final payments = _ensurePayments(navigator);
-          await _gmoLifecycle.ready;
-          if (!context.mounted) return;
-          await payments.openPurchase(context, navigator: navigator);
-        },
       ),
     );
   }

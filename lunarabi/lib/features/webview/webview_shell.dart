@@ -15,12 +15,25 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 typedef NavigatorReady = void Function(AppNavigator navigator, HostGuard guard);
-typedef PurchasePressed =
-    Future<void> Function(BuildContext context, AppNavigator navigator);
+
+enum WebViewSystemBackDecision { handledByWebView, allowRoutePop }
 
 @visibleForTesting
 bool shouldInjectBridgeBootstrap(WebViewCommittedUrl committedUrl) {
   return committedUrl.isTrusted;
+}
+
+@visibleForTesting
+Future<WebViewSystemBackDecision> decideWebViewSystemBack({
+  required Future<bool> Function() canGoBack,
+  required Future<void> Function() goBack,
+}) async {
+  if (!await canGoBack()) {
+    return WebViewSystemBackDecision.allowRoutePop;
+  }
+
+  await goBack();
+  return WebViewSystemBackDecision.handledByWebView;
 }
 
 @visibleForTesting
@@ -51,7 +64,6 @@ class WebViewShell extends StatefulWidget {
     required this.config,
     this.onSwitchFlavor,
     this.onNavigatorReady,
-    this.onPurchasePressed,
     this.navController,
     this.authTokenStore,
     this.pushTokenStore,
@@ -62,7 +74,6 @@ class WebViewShell extends StatefulWidget {
   final AppConfig config;
   final ValueChanged<Flavor>? onSwitchFlavor;
   final NavigatorReady? onNavigatorReady;
-  final PurchasePressed? onPurchasePressed;
   final BottomNavController? navController;
   final AuthTokenStore? authTokenStore;
   final PushTokenStore? pushTokenStore;
@@ -84,6 +95,7 @@ class _WebViewShellState extends State<WebViewShell> {
   late final PushTokenStore _push;
   late final BridgeHost _bridge;
   var _readyNotified = false;
+  var _routeCanPop = true;
 
   @override
   void initState() {
@@ -133,9 +145,11 @@ class _WebViewShellState extends State<WebViewShell> {
     final uri = Uri.tryParse(url);
     if (uri == null) {
       _committedUrl.clear();
+      unawaited(_refreshRoutePopState());
       return;
     }
     _committedUrl.markPageStarted(uri);
+    unawaited(_refreshRoutePopState());
   }
 
   void _markPageFinished(String url) {
@@ -144,6 +158,35 @@ class _WebViewShellState extends State<WebViewShell> {
       url: url,
       injectBootstrap: () => unawaited(_injectBridgeBootstrap()),
     );
+    unawaited(_refreshRoutePopState());
+  }
+
+  Future<void> _refreshRoutePopState() async {
+    final routeCanPop = !await _controller.canGoBack();
+    if (!mounted || _routeCanPop == routeCanPop) {
+      return;
+    }
+    setState(() => _routeCanPop = routeCanPop);
+  }
+
+  Future<void> _handleSystemBack() async {
+    final decision = await decideWebViewSystemBack(
+      canGoBack: _controller.canGoBack,
+      goBack: _controller.goBack,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (decision == WebViewSystemBackDecision.allowRoutePop) {
+      if (!_routeCanPop) {
+        setState(() => _routeCanPop = true);
+      }
+      return;
+    }
+
+    await _refreshRoutePopState();
   }
 
   Future<void> _configureControllerAndLoad() async {
@@ -204,34 +247,38 @@ class _WebViewShellState extends State<WebViewShell> {
   Widget build(BuildContext context) {
     final showEnv = !kReleaseMode && widget.onSwitchFlavor != null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          showEnv ? 'Lunarabi (${widget.config.flavor.name})' : 'Lunarabi',
+    return PopScope<void>(
+      canPop: _routeCanPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          return;
+        }
+        unawaited(_handleSystemBack());
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            showEnv ? 'Lunarabi (${widget.config.flavor.name})' : 'Lunarabi',
+          ),
+          actions: [
+            if (showEnv)
+              PopupMenuButton<Flavor>(
+                tooltip: '環境切替',
+                onSelected: widget.onSwitchFlavor,
+                itemBuilder: (context) => [
+                  for (final flavor in Flavor.values)
+                    PopupMenuItem(value: flavor, child: Text(flavor.name)),
+                ],
+              ),
+          ],
         ),
-        actions: [
-          if (widget.onPurchasePressed != null)
-            TextButton(
-              onPressed: () => widget.onPurchasePressed!(context, _navigator),
-              child: const Text('購入'),
-            ),
-          if (showEnv)
-            PopupMenuButton<Flavor>(
-              tooltip: '環境切替',
-              onSelected: widget.onSwitchFlavor,
-              itemBuilder: (context) => [
-                for (final flavor in Flavor.values)
-                  PopupMenuItem(value: flavor, child: Text(flavor.name)),
-              ],
-            ),
-        ],
-      ),
-      body: WebViewWidget(controller: _controller),
-      bottomNavigationBar: LunarabiBottomNavBar(
-        controller: _nav,
-        onSelect: (id) {
-          _bridge.notifyTabSelected(id);
-        },
+        body: WebViewWidget(controller: _controller),
+        bottomNavigationBar: LunarabiBottomNavBar(
+          controller: _nav,
+          onSelect: (id) {
+            _bridge.notifyTabSelected(id);
+          },
+        ),
       ),
     );
   }

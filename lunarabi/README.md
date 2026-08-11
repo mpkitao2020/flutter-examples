@@ -85,6 +85,15 @@ bash tool/forbid_firebase_options.sh
 
 対応 type 例: `nav.setVisible` / `nav.setBadge` / `nav.setActive` / `nav.tabSelected` / `auth.*` / `push.*`
 
+`webBaseUrl` と同じ origin（scheme / host / port）で読み込み完了したページだけ full bridge bootstrap と
+`bridge.ready` を受け取る。`deepLinkHost` など、WebView 内遷移を許可するが trusted ではないページでは
+native channel が存在する場合があるが、full bootstrap は注入しない。privileged handler の入口制御は後続ブランチで追加する。
+
+## WebView の戻る操作
+
+Android の system back は WebView 履歴を優先する。履歴があれば `controller.goBack()` し、
+履歴がなければ通常の route pop に任せる。このブランチでは iOS interactive pop の同等対応は扱わない。
+
 ## ブランディング（アイコン / スプラッシュ / 通知アイコン）
 
 ソースは `branding/`。差し替え手順は `branding/README.md`。
@@ -119,7 +128,8 @@ fvm flutter test
 
 ## 決済（都度課金）
 
-AppBar「購入」から手段を選択する。商品 ID は **`lunarabi.credit.100`（consumable）**。
+都度課金の coordinator / backend / IAP / GMO / 振込コードは後続の IAP bridge ブランチ用に残す。
+商品 ID は **`lunarabi.credit.100`（consumable）**。現時点の Shell には AppBar「購入」アクションを置かない。
 
 | 手段 | 挙動 |
 |---|---|

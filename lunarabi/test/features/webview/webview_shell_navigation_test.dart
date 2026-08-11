@@ -191,4 +191,34 @@ void main() {
       expect(injectCount, 1);
     });
   });
+
+  group('WebViewShell system back decision', () {
+    test('WebView 履歴があるときは goBack して route pop を止める', () async {
+      var goBackCount = 0;
+
+      final decision = await decideWebViewSystemBack(
+        canGoBack: () async => true,
+        goBack: () async {
+          goBackCount += 1;
+        },
+      );
+
+      expect(decision, WebViewSystemBackDecision.handledByWebView);
+      expect(goBackCount, 1);
+    });
+
+    test('WebView 履歴がないときは route pop に任せる', () async {
+      var goBackCount = 0;
+
+      final decision = await decideWebViewSystemBack(
+        canGoBack: () async => false,
+        goBack: () async {
+          goBackCount += 1;
+        },
+      );
+
+      expect(decision, WebViewSystemBackDecision.allowRoutePop);
+      expect(goBackCount, 0);
+    });
+  });
 }
