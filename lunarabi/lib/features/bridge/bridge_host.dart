@@ -14,7 +14,7 @@ class BridgeHost {
     required this.nav,
     required this.auth,
     required this.push,
-    BridgeEmitter? this._emitter,
+    this._emitter,
   });
 
   final BottomNavController nav;
