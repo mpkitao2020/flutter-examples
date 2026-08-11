@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "description": "Production release gates. All gates start open; docs or runbooks alone do not close production gates.",
+  "gates": [
+    {
+      "id": "firebase-prod-files",
+      "name": "Firebase prod files replaced",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "domains-aasa-assetlinks",
+      "name": "Real domains plus AASA and assetlinks",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "release-signing",
+      "name": "Android and iOS release signing",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "web-bridge-csp",
+      "name": "Web bridge frame and CSP policy",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "web-auth-restore",
+      "name": "Web auth restore",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "web-fcm-register",
+      "name": "Web FCM register API",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "web-iap-verify",
+      "name": "Web IAP verify bridge",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "production-apns",
+      "name": "Production aps-environment and push delivery",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    },
+    {
+      "id": "external-payment-compliance",
+      "name": "Japan external payment compliance",
+      "status": "open",
+      "evidence": "",
+      "owner": "",
+      "date": "",
+      "signOff": ""
+    }
+  ]
+}

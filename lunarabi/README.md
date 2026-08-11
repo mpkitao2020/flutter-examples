@@ -118,8 +118,68 @@ committed main-frame URL が trusted origin でない場合 `forbidden_origin` �
 
 ## 本番 hardening checklist
 
-Flutter テストで閉じられるのは Flutter branch deliverables だけ。External release gates は、各行の
-`evidence` / `owner` / `date` / `signOff` を埋めるまで本番完了にしない。
+Flutter テストで閉じられるのは Flutter branch deliverables だけ。External release gates は
+`docs/evidence/release_gates.manifest.json` の各 gate に `status: "closed"` と
+非空の `evidence` / `owner` / `date` / `signOff` を入れるまで本番完了にしない。
+docs/runbook alone does not close production gates.
+
+### Release preflight
+
+本番ビルド前の entrypoint は 1 つだけ:
+
+```bash
+bash tool/verify_release_inputs.sh
+```
+
+この preflight は次を検査する:
+
+- `LUNARABI_WEB_BASE_URL` と `LUNARABI_API_BASE_URL` が absolute `https` URL で、localhost / `.example` / `.invalid` ではない
+- `LUNARABI_DEEP_LINK_HOST` が scheme / port / slash / path を持たない production host
+- prod Firebase ファイルに `placeholder` / `.example` / `.invalid` が残っていない
+- Android manifest が `${deepLinkHost}` placeholder を使い、iOS entitlements が materialize 済み
+- Android release signing input が env または `android/keystore.properties` にある
+- `docs/evidence/release_gates.manifest.json` の全 gate が closed
+
+現ツリーは production secrets と evidence が無いので、preflight が失敗するのが正しい。
+
+### Release dart-define
+
+release では URL と deep link host を dart-define で入れる:
+
+```bash
+fvm flutter build appbundle \
+  --flavor prod \
+  --dart-define=FLAVOR=prod \
+  --dart-define=LUNARABI_WEB_BASE_URL="$LUNARABI_WEB_BASE_URL" \
+  --dart-define=LUNARABI_API_BASE_URL="$LUNARABI_API_BASE_URL" \
+  --dart-define=LUNARABI_DEEP_LINK_HOST="$LUNARABI_DEEP_LINK_HOST"
+```
+
+`main.dart` は `AppConfig.resolve` で `LUNARABI_WEB_BASE_URL` /
+`LUNARABI_API_BASE_URL` / `LUNARABI_DEEP_LINK_HOST` を読み、release では
+`AppConfig.assertReleaseHosts` が placeholder を拒否する。
+
+### Release signing and native links
+
+Android release signing は debug fallback しない。次の env、または同名相当の
+`android/keystore.properties`（`storeFile` / `storePassword` / `keyAlias` /
+`keyPassword`）を使う:
+
+```bash
+export LUNARABI_ANDROID_STORE_FILE=/secure/path/lunarabi-release.jks
+export LUNARABI_ANDROID_STORE_PASSWORD=...
+export LUNARABI_ANDROID_KEY_ALIAS=...
+export LUNARABI_ANDROID_KEY_PASSWORD=...
+```
+
+iOS Universal Links は release 前に materialize する:
+
+```bash
+bash tool/materialize_ios_deeplink_host.sh
+```
+
+詳細は `docs/superpowers/runbooks/lunarabi-release-gates.md` を参照。ただし
+runbook は手順書であって gate evidence ではない。
 
 ### Flutter branch deliverables（code）
 
