@@ -20,7 +20,7 @@ void main() {
       'nav.tabSelected',
       'auth.setBearerToken',
       'auth.clearBearerToken',
-      'auth.getBearerToken',
+      'auth.getStoredToken',
       'push.setToken',
       'push.getToken',
       'bridge.ready',

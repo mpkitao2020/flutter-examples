@@ -8,6 +8,9 @@ abstract final class BridgeTypes {
   static const navTabSelected = 'nav.tabSelected';
   static const authSetBearerToken = 'auth.setBearerToken';
   static const authClearBearerToken = 'auth.clearBearerToken';
+  static const authGetStoredToken = 'auth.getStoredToken';
+  // Legacy command kept only so BridgeHost can return a deliberate forbidden
+  // response instead of leaking through an unknown-type fallback.
   static const authGetBearerToken = 'auth.getBearerToken';
   static const pushSetToken = 'push.setToken';
   static const pushGetToken = 'push.getToken';
@@ -22,7 +25,7 @@ abstract final class BridgeTypes {
     navTabSelected,
     authSetBearerToken,
     authClearBearerToken,
-    authGetBearerToken,
+    authGetStoredToken,
     pushSetToken,
     pushGetToken,
     bridgeReady,

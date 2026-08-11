@@ -134,9 +134,9 @@ class _LunarabiAppState extends State<LunarabiApp> {
         onSwitchFlavor: kReleaseMode ? null : _switchFlavor,
         onNavigatorReady: _onNavigatorReady,
         navController: AppServices.navController,
-        authTokenStore: AppServices.authTokenStore,
+        authTokenRepository: AppServices.authTokenRepository,
         pushTokenStore: AppServices.pushTokenStore,
-        bridgeHost: AppServices.bridgeHost,
+        bridgeHostFactory: AppServices.createBridgeHost,
       ),
     );
   }

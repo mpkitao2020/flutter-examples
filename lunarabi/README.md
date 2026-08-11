@@ -81,13 +81,28 @@ bash tool/forbid_firebase_options.sh
 
 - Flutter→JS: `window.__LUNARABI_NATIVE_EVENT__(msg)`
 - JS→Flutter: `window.LunarabiBridge.post(msg)`
-- 契約書（フロント向け）: リポジトリの `docs/superpowers/frontend/2026-08-11-lunarabi-webview-bridge-contract.md`（design-plans ブランチ）
+- 契約書（フロント向け）: リポジトリの `docs/superpowers/frontend/2026-08-11-lunarabi-webview-bridge-contract.md`
 
-対応 type 例: `nav.setVisible` / `nav.setBadge` / `nav.setActive` / `nav.tabSelected` / `auth.*` / `push.*`
+対応 type 例: `nav.setVisible` / `nav.setBadge` / `nav.setActive` /
+`nav.tabSelected` / `auth.setBearerToken` / `auth.clearBearerToken` /
+`auth.getStoredToken` / `push.*`
 
 `webBaseUrl` と同じ origin（scheme / host / port）で読み込み完了したページだけ full bridge bootstrap と
 `bridge.ready` を受け取る。`deepLinkHost` など、WebView 内遷移を許可するが trusted ではないページでは
-native channel が存在する場合があるが、full bootstrap は注入しない。privileged handler の入口制御は後続ブランチで追加する。
+native channel が存在する場合があるが、full bootstrap は注入しない。auth の set / clear / restore は
+committed main-frame URL が trusted origin でない場合 `forbidden_origin` を返す。
+
+### 外部 release gate（Web / DevOps）
+
+Flutter 側のテストだけでは、Web の CSP や token 保持方針は完了扱いにしない。各 gate は
+`evidence` / `owner` / `date` / `signOff` を記録して閉じる。
+
+| Gate | acceptance artifact |
+|---|---|
+| SPA が untrusted iframe から native channel に到達できない | CSP header dump または frame policy snippet + owner/date/signOff |
+| Web が token を memory-only で保持し、localStorage に保存しない | manual steps または code review link + owner/date/signOff |
+| Web が `bridge.ready` 後に `auth.getStoredToken` を呼ぶ | manual/staging trace + owner/date/signOff |
+| logout / 401 で Web が `auth.clearBearerToken` を呼ぶ | manual/staging trace + owner/date/signOff |
 
 ## WebView の戻る操作
 

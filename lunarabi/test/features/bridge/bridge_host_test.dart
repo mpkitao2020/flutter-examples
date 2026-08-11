@@ -20,20 +20,25 @@ import 'package:webview_flutter_platform_interface/webview_flutter_platform_inte
 
 void main() {
   late BottomNavController nav;
-  late AuthTokenStore auth;
+  late _MemoryAuthTokenRepository authRepo;
   late PushTokenStore push;
   late List<BridgeMessage> emitted;
   late BridgeHost host;
+  late Uri? committedUri;
+  final webBaseUrl = Uri.parse('https://dev.lunarabi.example');
 
   setUp(() {
     nav = BottomNavController();
-    auth = AuthTokenStore();
+    authRepo = _MemoryAuthTokenRepository();
     push = PushTokenStore();
     emitted = <BridgeMessage>[];
+    committedUri = Uri.parse('https://dev.lunarabi.example/articles/1');
     host = BridgeHost(
       nav: nav,
-      auth: auth,
+      authRepo: authRepo,
       push: push,
+      committedWebUri: () => committedUri,
+      webBaseUrl: webBaseUrl,
       emitter: (message) async => emitted.add(message),
     );
   });
@@ -56,14 +61,14 @@ void main() {
     expect(nav.active, NavTabId.account);
   });
 
-  test('auth.setBearerToken / getBearerToken / clear', () async {
+  test('auth.setBearerToken / getStoredToken / clear', () async {
     await host.handleFromJs(
       '{"type":"auth.setBearerToken","payload":{"token":"abc-token"}}',
     );
-    expect(auth.bearerToken, 'abc-token');
+    expect(authRepo.token, 'abc-token');
 
     await host.handleFromJs(
-      '{"type":"auth.getBearerToken","requestId":"r1","payload":{}}',
+      '{"type":"auth.getStoredToken","requestId":"r1","payload":{}}',
     );
     expect(emitted, isNotEmpty);
     final response = emitted.last;
@@ -73,7 +78,7 @@ void main() {
     expect(response.payload['token'], 'abc-token');
 
     await host.handleFromJs('{"type":"auth.clearBearerToken","payload":{}}');
-    expect(auth.bearerToken, isNull);
+    expect(authRepo.token, isNull);
   });
 
   test('未知 type は bridge.response で unknown_type', () async {
@@ -102,8 +107,10 @@ void main() {
     var readyCount = 0;
     host = BridgeHost(
       nav: nav,
-      auth: auth,
+      authRepo: authRepo,
       push: push,
+      committedWebUri: () => committedUri,
+      webBaseUrl: webBaseUrl,
       emitter: (message) async => emitted.add(message),
       onReady: () => readyCount += 1,
     );
@@ -132,8 +139,10 @@ void main() {
       var readyCount = 0;
       host = BridgeHost(
         nav: nav,
-        auth: auth,
+        authRepo: authRepo,
         push: push,
+        committedWebUri: () => committedUri,
+        webBaseUrl: webBaseUrl,
         emitter: (message) async => emitted.add(message),
         onReady: () => readyCount += 1,
       );
@@ -158,8 +167,10 @@ void main() {
       var readyCount = 0;
       host = BridgeHost(
         nav: nav,
-        auth: auth,
+        authRepo: authRepo,
         push: push,
+        committedWebUri: () => committedUri,
+        webBaseUrl: webBaseUrl,
         emitter: (message) async => emitted.add(message),
         onReady: () => readyCount += 1,
       );
@@ -198,6 +209,25 @@ void main() {
       expect(readyCount, 0);
     },
   );
+}
+
+class _MemoryAuthTokenRepository implements AuthTokenRepository {
+  String? token;
+
+  @override
+  Future<void> save(String token) async {
+    this.token = token;
+  }
+
+  @override
+  Future<String?> read() async {
+    return token;
+  }
+
+  @override
+  Future<void> clear() async {
+    token = null;
+  }
 }
 
 class _FakePlatformWebViewController extends PlatformWebViewController {

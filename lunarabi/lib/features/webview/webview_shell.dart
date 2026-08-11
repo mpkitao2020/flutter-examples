@@ -8,6 +8,7 @@ import 'package:lunarabi/core/navigation/app_navigator.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_bar.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
+import 'package:lunarabi/features/bridge/secure_auth_token_store.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
 import 'package:lunarabi/features/webview/webview_committed_url.dart';
 import 'package:lunarabi/features/webview/webview_navigation_handler.dart';
@@ -16,6 +17,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 typedef NavigatorReady = void Function(AppNavigator navigator, HostGuard guard);
+typedef BridgeHostFactory =
+    BridgeHost Function({
+      required BottomNavController nav,
+      required AuthTokenRepository authRepo,
+      required PushTokenStore push,
+      required Uri? Function() committedWebUri,
+      required Uri webBaseUrl,
+    });
 typedef BridgeBootstrapInjector =
     void Function(WebViewCommittedUrlSnapshot snapshot);
 
@@ -78,6 +87,22 @@ Future<bool> _launchUrl(
   return launchUrl(uri, mode: mode);
 }
 
+BridgeHost _createBridgeHost({
+  required BottomNavController nav,
+  required AuthTokenRepository authRepo,
+  required PushTokenStore push,
+  required Uri? Function() committedWebUri,
+  required Uri webBaseUrl,
+}) {
+  return BridgeHost(
+    nav: nav,
+    authRepo: authRepo,
+    push: push,
+    committedWebUri: committedWebUri,
+    webBaseUrl: webBaseUrl,
+  );
+}
+
 class WebViewShell extends StatefulWidget {
   const WebViewShell({
     super.key,
@@ -85,9 +110,10 @@ class WebViewShell extends StatefulWidget {
     this.onSwitchFlavor,
     this.onNavigatorReady,
     this.navController,
-    this.authTokenStore,
+    this.authTokenRepository,
     this.pushTokenStore,
     this.bridgeHost,
+    this.bridgeHostFactory = _createBridgeHost,
     this.launchUrlFn = _launchUrl,
   });
 
@@ -95,9 +121,10 @@ class WebViewShell extends StatefulWidget {
   final ValueChanged<Flavor>? onSwitchFlavor;
   final NavigatorReady? onNavigatorReady;
   final BottomNavController? navController;
-  final AuthTokenStore? authTokenStore;
+  final AuthTokenRepository? authTokenRepository;
   final PushTokenStore? pushTokenStore;
   final BridgeHost? bridgeHost;
+  final BridgeHostFactory bridgeHostFactory;
   final WebViewLaunchUrl launchUrlFn;
 
   @override
@@ -111,7 +138,7 @@ class _WebViewShellState extends State<WebViewShell> {
   late WebViewCommittedUrl _committedUrl;
   late WebViewNavigationHandler _navigationHandler;
   late final BottomNavController _nav;
-  late final AuthTokenStore _auth;
+  late final AuthTokenRepository _authRepo;
   late final PushTokenStore _push;
   late final BridgeHost _bridge;
   var _readyNotified = false;
@@ -121,12 +148,11 @@ class _WebViewShellState extends State<WebViewShell> {
   void initState() {
     super.initState();
     _nav = widget.navController ?? BottomNavController();
-    _auth = widget.authTokenStore ?? AuthTokenStore();
+    _authRepo = widget.authTokenRepository ?? SecureAuthTokenStore();
     _push = widget.pushTokenStore ?? PushTokenStore();
-    _bridge =
-        widget.bridgeHost ?? BridgeHost(nav: _nav, auth: _auth, push: _push);
 
     _configureNavigationState();
+    _bridge = _createOrUseBridgeHost();
     _controller = WebViewController();
     _navigator = WebViewAppNavigator(guard: _guard, controller: _controller);
     unawaited(_configureControllerAndLoad());
@@ -151,6 +177,17 @@ class _WebViewShellState extends State<WebViewShell> {
       committedUrl: _committedUrl,
       launchUrlFn: widget.launchUrlFn,
     );
+  }
+
+  BridgeHost _createOrUseBridgeHost() {
+    return widget.bridgeHost ??
+        widget.bridgeHostFactory(
+          nav: _nav,
+          authRepo: _authRepo,
+          push: _push,
+          committedWebUri: () => _committedUrl.committedUri,
+          webBaseUrl: widget.config.webBaseUrl,
+        );
   }
 
   NavigationDelegate _buildNavigationDelegate() {
@@ -271,6 +308,10 @@ class _WebViewShellState extends State<WebViewShell> {
     if (oldWidget.config.flavor != widget.config.flavor ||
         oldWidget.launchUrlFn != widget.launchUrlFn) {
       _configureNavigationState();
+      _bridge.updateTrustedOrigin(
+        committedWebUri: () => _committedUrl.committedUri,
+        webBaseUrl: widget.config.webBaseUrl,
+      );
       _navigator = WebViewAppNavigator(guard: _guard, controller: _controller);
       unawaited(
         _reconfigureController(

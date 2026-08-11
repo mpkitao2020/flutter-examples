@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_message.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
+import 'package:lunarabi/features/webview/trusted_bridge_origin.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 typedef BridgeEmitter = Future<void> Function(BridgeMessage message);
@@ -13,16 +14,21 @@ typedef BridgeBootstrapGuard = bool Function();
 class BridgeHost {
   BridgeHost({
     required this.nav,
-    required this.auth,
+    required this.authRepo,
     required this.push,
+    required Uri? Function() committedWebUri,
+    required Uri webBaseUrl,
     this._emitter,
     this.onReady,
-  });
+  }) : _committedWebUri = committedWebUri,
+       _webBaseUrl = webBaseUrl;
 
   final BottomNavController nav;
-  final AuthTokenStore auth;
+  final AuthTokenRepository authRepo;
   final PushTokenStore push;
   final VoidCallback? onReady;
+  Uri? Function() _committedWebUri;
+  Uri _webBaseUrl;
 
   BridgeEmitter? _emitter;
   WebViewController? _controller;
@@ -34,6 +40,14 @@ class BridgeHost {
 
   void setEmitter(BridgeEmitter emitter) {
     _emitter = emitter;
+  }
+
+  void updateTrustedOrigin({
+    required Uri? Function() committedWebUri,
+    required Uri webBaseUrl,
+  }) {
+    _committedWebUri = committedWebUri;
+    _webBaseUrl = webBaseUrl;
   }
 
   Future<void> ensureChannel(WebViewController controller) async {
@@ -138,20 +152,35 @@ class BridgeHost {
         nav.setActive(id);
         return;
       case BridgeTypes.authSetBearerToken:
+        if (!await _requireTrustedBridgeOrigin(message)) {
+          return;
+        }
         final token = message.payload['token'];
         if (token is! String || token.isEmpty) {
           await _respondError(message, 'invalid_payload');
           return;
         }
-        auth.setToken(token);
-        debugPrint('BridgeHost: auth token set ${auth.maskedForLog}');
+        await authRepo.save(token);
+        debugPrint('BridgeHost: auth token set ${maskSecret(token)}');
         return;
       case BridgeTypes.authClearBearerToken:
-        auth.clear();
+        if (!await _requireTrustedBridgeOrigin(message)) {
+          return;
+        }
+        await authRepo.clear();
         debugPrint('BridgeHost: auth token cleared');
         return;
+      case BridgeTypes.authGetStoredToken:
+        if (!await _requireTrustedBridgeOrigin(message)) {
+          return;
+        }
+        await _respondOk(message, {'token': await authRepo.read()});
+        return;
       case BridgeTypes.authGetBearerToken:
-        await _respondOk(message, {'token': auth.bearerToken});
+        if (!await _requireTrustedBridgeOrigin(message)) {
+          return;
+        }
+        await _respondError(message, 'forbidden');
         return;
       case BridgeTypes.pushGetToken:
         await _respondOk(message, {'token': push.token});
@@ -175,6 +204,14 @@ class BridgeHost {
     return emitToJs(
       BridgeMessage(type: BridgeTypes.pushSetToken, payload: {'token': token}),
     );
+  }
+
+  Future<bool> _requireTrustedBridgeOrigin(BridgeMessage request) async {
+    if (isTrustedBridgeOrigin(_committedWebUri(), _webBaseUrl)) {
+      return true;
+    }
+    await _respondError(request, 'forbidden_origin');
+    return false;
   }
 
   Future<void> _respondOk(BridgeMessage request, Map<String, dynamic> payload) {
