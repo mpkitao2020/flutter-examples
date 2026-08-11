@@ -53,6 +53,22 @@ Dart 側に `FirebaseOptions` を入れていないか確認:
 bash tool/forbid_firebase_options.sh
 ```
 
+## ブランディング（アイコン / スプラッシュ / 通知アイコン）
+
+ソースは `branding/`。差し替え手順は `branding/README.md`。
+
+```bash
+# 画像を差し替えたあと
+dart run flutter_launcher_icons
+dart run flutter_native_splash:create
+cp branding/notification_icon.png android/app/src/main/res/drawable/ic_stat_lunarabi.png
+```
+
+- アプリアイコン: Android mipmap / iOS AppIcon
+- スプラッシュ: Native Splash（色 `#0B1F33`）
+- プッシュ通知アイコン（Android）: `@drawable/ic_stat_lunarabi`（白＋透明。カラー不可）
+- iOS 通知はアプリアイコンを使用
+
 ## テスト
 
 ```bash
@@ -64,6 +80,7 @@ fvm flutter test
 - `test/core/env/app_config_test.dart` … 環境 URL / FLAVOR パース
 - `test/core/navigation/host_guard_test.dart` … 開いてよい URL の判定
 - `test/tool/forbid_firebase_options_test.dart` … FirebaseOptions 禁止の回帰
+- `test/branding/branding_assets_test.dart` … アイコン等の成果物パス
 
 ## 審査メモ（先出し）
 
