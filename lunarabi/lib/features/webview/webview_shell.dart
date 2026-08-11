@@ -16,6 +16,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 typedef NavigatorReady = void Function(AppNavigator navigator, HostGuard guard);
+typedef BridgeBootstrapInjector =
+    void Function(WebViewCommittedUrlSnapshot snapshot);
 
 enum WebViewSystemBackDecision { handledByWebView, allowRoutePop }
 
@@ -57,14 +59,15 @@ Future<WebViewSystemBackDecision> handleWebViewSystemBack({
 void handleWebViewShellPageFinished({
   required WebViewCommittedUrl committedUrl,
   required String url,
-  required VoidCallback injectBootstrap,
+  required BridgeBootstrapInjector injectBootstrap,
 }) {
   final uri = Uri.tryParse(url);
   if (uri != null) {
     committedUrl.markPageFinished(uri);
   }
-  if (shouldInjectBridgeBootstrap(committedUrl)) {
-    injectBootstrap();
+  final snapshot = committedUrl.trustedSnapshot;
+  if (snapshot != null) {
+    injectBootstrap(snapshot);
   }
 }
 
@@ -173,7 +176,8 @@ class _WebViewShellState extends State<WebViewShell> {
     handleWebViewShellPageFinished(
       committedUrl: _committedUrl,
       url: url,
-      injectBootstrap: () => unawaited(_injectBridgeBootstrap()),
+      injectBootstrap: (snapshot) =>
+          unawaited(_injectBridgeBootstrap(snapshot)),
     );
     unawaited(_refreshRoutePopState());
   }
@@ -243,12 +247,17 @@ class _WebViewShellState extends State<WebViewShell> {
     }
   }
 
-  Future<void> _injectBridgeBootstrap() async {
+  Future<void> _injectBridgeBootstrap(
+    WebViewCommittedUrlSnapshot trustedSnapshot,
+  ) async {
     final platform = defaultTargetPlatform == TargetPlatform.iOS
         ? 'ios'
         : 'android';
     try {
-      await _bridge.injectBootstrap(platform: platform);
+      await _bridge.injectBootstrap(
+        platform: platform,
+        shouldContinue: () => _committedUrl.isCurrentTrusted(trustedSnapshot),
+      );
     } catch (error, stack) {
       // Platform views / missing channel support in tests should not crash the shell.
       debugPrint('Bridge bootstrap inject failed: $error');

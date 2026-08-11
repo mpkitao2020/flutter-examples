@@ -7,10 +7,14 @@
 // =============================================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarabi/core/env/app_config.dart';
+import 'package:lunarabi/core/navigation/app_navigator.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
 import 'package:lunarabi/features/bridge/bridge_message.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
+import 'package:lunarabi/features/webview/webview_committed_url.dart';
+import 'package:lunarabi/features/webview/webview_navigation_policy.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
@@ -121,6 +125,79 @@ void main() {
     );
     expect(readyCount, 2);
   });
+
+  test(
+    'injectBootstrap skips JS and ready when committed guard is stale',
+    () async {
+      var readyCount = 0;
+      host = BridgeHost(
+        nav: nav,
+        auth: auth,
+        push: push,
+        emitter: (message) async => emitted.add(message),
+        onReady: () => readyCount += 1,
+      );
+      final platform = _FakePlatformWebViewController();
+      final controller = WebViewController.fromPlatform(platform);
+
+      await host.ensureChannel(controller);
+      await host.injectBootstrap(
+        platform: 'android',
+        shouldContinue: () => false,
+      );
+
+      expect(platform.javaScripts, isEmpty);
+      expect(emitted, isEmpty);
+      expect(readyCount, 0);
+    },
+  );
+
+  test(
+    'injectBootstrap skips ready when committed guard goes stale after JS',
+    () async {
+      var readyCount = 0;
+      host = BridgeHost(
+        nav: nav,
+        auth: auth,
+        push: push,
+        emitter: (message) async => emitted.add(message),
+        onReady: () => readyCount += 1,
+      );
+      final platform = _FakePlatformWebViewController();
+      final controller = WebViewController.fromPlatform(platform);
+      final config = AppConfig.fromFlavor(Flavor.dev);
+      final committedUrl = WebViewCommittedUrl(
+        webBaseUrl: config.webBaseUrl,
+        policy: WebViewNavigationPolicy(HostGuard(config)),
+      );
+      committedUrl.markPageFinished(
+        Uri.parse('https://dev.lunarabi.example/articles/1'),
+      );
+      final snapshot = committedUrl.trustedSnapshot;
+
+      platform.onRunJavaScript = (_) {
+        committedUrl.markPageStarted(Uri.parse('https://evil.example/phish'));
+      };
+      await host.ensureChannel(controller);
+      await host.injectBootstrap(
+        platform: 'android',
+        shouldContinue: () => committedUrl.isCurrentTrusted(snapshot!),
+      );
+
+      expect(snapshot, isNotNull);
+      expect(
+        platform.javaScripts.where(
+          (script) => script.contains('LunarabiBridge'),
+        ),
+        hasLength(1),
+      );
+      expect(
+        emitted.where((message) => message.type == BridgeTypes.bridgeReady),
+        isEmpty,
+      );
+      expect(readyCount, 0);
+    },
+  );
 }
 
 class _FakePlatformWebViewController extends PlatformWebViewController {
@@ -129,6 +206,7 @@ class _FakePlatformWebViewController extends PlatformWebViewController {
 
   final channelNames = <String>[];
   final javaScripts = <String>[];
+  void Function(String javaScript)? onRunJavaScript;
 
   @override
   Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {
@@ -138,5 +216,6 @@ class _FakePlatformWebViewController extends PlatformWebViewController {
   @override
   Future<void> runJavaScript(String javaScript) async {
     javaScripts.add(javaScript);
+    onRunJavaScript?.call(javaScript);
   }
 }

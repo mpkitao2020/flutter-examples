@@ -26,17 +26,20 @@ class WebViewNavigationHandler {
 
     final uri = Uri.tryParse(request.url);
     if (uri == null || !uri.hasScheme) {
-      committedUrl.clear();
       debugPrint('WebViewNavigationHandler: blocked uri=${request.url}');
       return NavigationDecision.prevent;
     }
 
-    committedUrl.markNavigationStarted(uri);
     return switch (policy.decide(uri)) {
-      WebViewNavAction.allow => NavigationDecision.navigate,
+      WebViewNavAction.allow => _allow(uri),
       WebViewNavAction.openExternal => _openExternal(uri),
       WebViewNavAction.block => _block(uri),
     };
+  }
+
+  NavigationDecision _allow(Uri uri) {
+    committedUrl.markNavigationStarted(uri);
+    return NavigationDecision.navigate;
   }
 
   Future<NavigationDecision> _openExternal(Uri uri) async {

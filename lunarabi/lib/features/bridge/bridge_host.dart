@@ -7,6 +7,7 @@ import 'package:lunarabi/features/bridge/token_stores.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 typedef BridgeEmitter = Future<void> Function(BridgeMessage message);
+typedef BridgeBootstrapGuard = bool Function();
 
 /// Bidirectional bridge between WebView JS and Flutter.
 class BridgeHost {
@@ -50,20 +51,36 @@ class BridgeHost {
     _channelEnsured = true;
   }
 
-  Future<void> injectBootstrap({required String platform}) async {
+  Future<void> injectBootstrap({
+    required String platform,
+    BridgeBootstrapGuard? shouldContinue,
+  }) async {
     final controller = _controller;
     if (controller == null) {
       debugPrint('BridgeHost: cannot inject bootstrap before ensureChannel');
       return;
     }
+    if (!_shouldContinueBootstrap(shouldContinue)) {
+      return;
+    }
     await controller.runJavaScript(_bootstrapJs);
+    if (!_shouldContinueBootstrap(shouldContinue)) {
+      return;
+    }
     await emitToJs(
       BridgeMessage(
         type: BridgeTypes.bridgeReady,
         payload: {'platform': platform},
       ),
     );
+    if (!_shouldContinueBootstrap(shouldContinue)) {
+      return;
+    }
     onReady?.call();
+  }
+
+  bool _shouldContinueBootstrap(BridgeBootstrapGuard? shouldContinue) {
+    return shouldContinue == null || shouldContinue();
   }
 
   Future<void> attach(

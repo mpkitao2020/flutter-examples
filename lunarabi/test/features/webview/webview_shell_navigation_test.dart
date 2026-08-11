@@ -80,6 +80,34 @@ void main() {
       expect(committedUrl.isTrusted, isFalse);
     });
 
+    test('外部遷移を防いだら前の trusted committed URL を保持する', () async {
+      final trusted = Uri.parse('https://dev.lunarabi.example/articles/1');
+      committedUrl.markPageFinished(trusted);
+
+      final decision = await handler.handleNavigationRequest(
+        mainFrame('https://evil.example/phish'),
+      );
+
+      expect(decision, NavigationDecision.prevent);
+      expect(launches.single.uri, Uri.parse('https://evil.example/phish'));
+      expect(committedUrl.committedUri, trusted);
+      expect(committedUrl.isTrusted, isTrue);
+    });
+
+    test('ブロックした遷移でも前の trusted committed URL を保持する', () async {
+      final trusted = Uri.parse('https://dev.lunarabi.example/articles/1');
+      committedUrl.markPageFinished(trusted);
+
+      final decision = await handler.handleNavigationRequest(
+        mainFrame('lunarabi-native://danger'),
+      );
+
+      expect(decision, NavigationDecision.prevent);
+      expect(launches, isEmpty);
+      expect(committedUrl.committedUri, trusted);
+      expect(committedUrl.isTrusted, isTrue);
+    });
+
     test('許可ホストは WebView 遷移を許可し、外部起動しない', () async {
       final decision = await handler.handleNavigationRequest(
         mainFrame('https://dev.lunarabi.example/articles/1'),
@@ -112,6 +140,37 @@ void main() {
 
       expect(committedUrl.committedUri, isNull);
       expect(committedUrl.isTrusted, isFalse);
+    });
+
+    test('trusted snapshot は page start で stale になる', () {
+      final trusted = Uri.parse('https://dev.lunarabi.example/articles/1');
+      committedUrl.markPageFinished(trusted);
+      final snapshot = committedUrl.trustedSnapshot;
+
+      committedUrl.markPageStarted(Uri.parse('https://evil.example/phish'));
+
+      expect(snapshot, isNotNull);
+      expect(committedUrl.isCurrentTrusted(snapshot!), isFalse);
+      expect(committedUrl.committedUri, isNull);
+      expect(committedUrl.isTrusted, isFalse);
+    });
+
+    test('trusted snapshot は non-trusted committed URL への変更で stale になる', () {
+      final trusted = Uri.parse('https://dev.lunarabi.example/articles/1');
+      committedUrl.markPageFinished(trusted);
+      final snapshot = committedUrl.trustedSnapshot;
+
+      committedUrl.markPageFinished(
+        Uri.parse('https://app.lunarabi.example/pay'),
+      );
+
+      expect(snapshot, isNotNull);
+      expect(
+        committedUrl.committedUri,
+        Uri.parse('https://app.lunarabi.example/pay'),
+      );
+      expect(committedUrl.isTrusted, isFalse);
+      expect(committedUrl.isCurrentTrusted(snapshot!), isFalse);
     });
   });
 
@@ -167,7 +226,7 @@ void main() {
       handleWebViewShellPageFinished(
         committedUrl: committedUrl,
         url: 'https://app.lunarabi.example/pay',
-        injectBootstrap: () => injectCount += 1,
+        injectBootstrap: (_) => injectCount += 1,
       );
 
       expect(
@@ -184,7 +243,10 @@ void main() {
       handleWebViewShellPageFinished(
         committedUrl: committedUrl,
         url: 'https://dev.lunarabi.example/articles/1',
-        injectBootstrap: () => injectCount += 1,
+        injectBootstrap: (snapshot) {
+          expect(committedUrl.isCurrentTrusted(snapshot), isTrue);
+          injectCount += 1;
+        },
       );
 
       expect(committedUrl.isTrusted, isTrue);
