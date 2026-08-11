@@ -14,6 +14,10 @@ abstract final class BridgeTypes {
   static const authGetBearerToken = 'auth.getBearerToken';
   static const pushSetToken = 'push.setToken';
   static const pushGetToken = 'push.getToken';
+  static const iapStart = 'iap.start';
+  static const iapPurchaseUpdated = 'iap.purchaseUpdated';
+  static const iapConfirmResult = 'iap.confirmResult';
+  static const iapFinished = 'iap.finished';
   static const bridgeReady = 'bridge.ready';
   static const bridgeResponse = 'bridge.response';
 
@@ -28,6 +32,10 @@ abstract final class BridgeTypes {
     authGetStoredToken,
     pushSetToken,
     pushGetToken,
+    iapStart,
+    iapPurchaseUpdated,
+    iapConfirmResult,
+    iapFinished,
     bridgeReady,
     bridgeResponse,
   };

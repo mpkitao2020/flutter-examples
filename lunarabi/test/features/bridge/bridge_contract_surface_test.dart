@@ -23,6 +23,10 @@ void main() {
       'auth.getStoredToken',
       'push.setToken',
       'push.getToken',
+      'iap.start',
+      'iap.purchaseUpdated',
+      'iap.confirmResult',
+      'iap.finished',
       'bridge.ready',
       'bridge.response',
     };

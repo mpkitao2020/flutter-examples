@@ -38,6 +38,10 @@ Requests that need a reply must include `requestId`. Flutter replies with
 | `auth.getStoredToken` | Web to Flutter | Read the saved token after `bridge.ready`. Trusted origin required. |
 | `push.setToken` | Flutter to Web | Native push token event with platform. Sensitive event, trusted origin required before release. |
 | `push.getToken` | Web to Flutter | Optional missed-token request. Privileged if exposed. |
+| `iap.start` | Web to Flutter | Start native IAP for an allowlisted product. Trusted origin required. |
+| `iap.purchaseUpdated` | Flutter to Web | Native purchase receipt for Web verification. Trusted origin required before emit. |
+| `iap.confirmResult` | Web to Flutter | Web verification result for a pending purchase. Trusted origin required. |
+| `iap.finished` | Flutter to Web | Terminal native IAP result. Trusted origin required before emit. |
 | `bridge.ready` | Flutter to Web | Full bridge bootstrap is ready on the trusted origin. |
 | `bridge.response` | Flutter to Web | Reply envelope for request/response calls. |
 
@@ -109,6 +113,24 @@ Forbidden origin response:
 
 After each trusted `bridge.ready`, Flutter replays any stored FCM token as
 `push.setToken`. Allowed but non-trusted pages do not receive this replay.
+
+## IAP messages
+
+The native shell exposes Web-started IAP through bridge messages only. Web asks
+Flutter to start an allowlisted product, Flutter emits the Store receipt to Web,
+Web verifies it with the backend, then Web sends the verification result back to
+Flutter before native completion/consume.
+
+IAP message types:
+
+- `iap.start`
+- `iap.purchaseUpdated`
+- `iap.confirmResult`
+- `iap.finished`
+
+All IAP messages are privileged. `iap.start`, `iap.confirmResult`, and every
+Flutter emit of `iap.purchaseUpdated` / `iap.finished` require the committed
+main-frame URL to match the trusted bridge origin.
 
 ## Trusted origin rule
 
