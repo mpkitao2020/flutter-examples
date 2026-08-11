@@ -199,10 +199,13 @@ class BridgeHost {
     );
   }
 
-  Future<void> notifyPushToken(String token) {
+  Future<void> notifyPushToken(String token, {required String platform}) {
     push.setToken(token);
     return emitToJs(
-      BridgeMessage(type: BridgeTypes.pushSetToken, payload: {'token': token}),
+      BridgeMessage(
+        type: BridgeTypes.pushSetToken,
+        payload: {'token': token, 'platform': platform},
+      ),
     );
   }
 

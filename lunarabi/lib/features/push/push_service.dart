@@ -101,7 +101,10 @@ class PushService {
   Future<void> _registerToken(String token) async {
     try {
       await backend.register(token);
-      await AppServices.bridgeHost.notifyPushToken(token);
+      await AppServices.bridgeHost.notifyPushToken(
+        token,
+        platform: Platform.isIOS ? 'ios' : 'android',
+      );
     } catch (error) {
       debugPrint('PushService: register failed: $error');
     }

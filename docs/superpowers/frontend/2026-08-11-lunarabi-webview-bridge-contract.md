@@ -36,7 +36,7 @@ Requests that need a reply must include `requestId`. Flutter replies with
 | `auth.setBearerToken` | Web to Flutter | Save the Sanctum Bearer token. Trusted origin required. |
 | `auth.clearBearerToken` | Web to Flutter | Clear the saved token on logout or 401. Trusted origin required. |
 | `auth.getStoredToken` | Web to Flutter | Read the saved token after `bridge.ready`. Trusted origin required. |
-| `push.setToken` | Flutter to Web | Native push token event. Sensitive event, trusted origin required before release. |
+| `push.setToken` | Flutter to Web | Native push token event with platform. Sensitive event, trusted origin required before release. |
 | `push.getToken` | Web to Flutter | Optional missed-token request. Privileged if exposed. |
 | `bridge.ready` | Flutter to Web | Full bridge bootstrap is ready on the trusted origin. |
 | `bridge.response` | Flutter to Web | Reply envelope for request/response calls. |
@@ -90,6 +90,22 @@ Forbidden origin response:
   "payload": { "ok": false, "error": "forbidden_origin" }
 }
 ```
+
+## Push messages
+
+`push.setToken`
+
+```json
+{
+  "type": "push.setToken",
+  "payload": {
+    "token": "fcm-token",
+    "platform": "ios"
+  }
+}
+```
+
+`platform` is `ios` or `android`.
 
 ## Trusted origin rule
 

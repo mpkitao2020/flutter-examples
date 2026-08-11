@@ -103,6 +103,14 @@ void main() {
     expect(emitted.single.payload['token'], 'fcm-1');
   });
 
+  test('notifyPushToken は token と platform を push.setToken で出す', () async {
+    await host.notifyPushToken('fcm-abc', platform: 'android');
+    expect(push.token, 'fcm-abc');
+    expect(emitted.single.type, BridgeTypes.pushSetToken);
+    expect(emitted.single.payload['token'], 'fcm-abc');
+    expect(emitted.single.payload['platform'], 'android');
+  });
+
   test('injectBootstrap は channel を増やさず trusted page ごとに ready を出す', () async {
     var readyCount = 0;
     host = BridgeHost(
