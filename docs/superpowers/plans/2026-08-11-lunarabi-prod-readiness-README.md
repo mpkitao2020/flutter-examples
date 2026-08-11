@@ -1,21 +1,16 @@
-# Lunarabi 本番運用クロージャ — プラン索引
+# Lunarabi 本番運用クロージャ — プラン索引（敵対的検証反映）
 
 > Spec: [../specs/2026-08-11-lunarabi-prod-readiness-design.md](../specs/2026-08-11-lunarabi-prod-readiness-design.md)
 
-敵対的検証の結論「現状では本番運用不可」を閉じるための依存順プラン。
-
-| 順 | Branch（予定） | Plan | Base |
+| 順 | Branch | Plan | Base |
 |---|---|---|---|
-| 1 | `cursor/lunarabi-prod-config-c3bc` | [prod-config](./2026-08-11-lunarabi-prod-config.md) | `cursor/lunarabi-nav-icons-ios-caps-c3bc` |
-| 2 | `cursor/lunarabi-prod-secrets-signing-c3bc` | [prod-secrets-signing](./2026-08-11-lunarabi-prod-secrets-signing.md) | after 1 |
-| 3 | `cursor/lunarabi-prod-payment-http-c3bc` | [prod-payment-http](./2026-08-11-lunarabi-prod-payment-http.md) | after 2 |
-| 4 | `cursor/lunarabi-prod-web-gates-c3bc`（docs）+ Web/DevOps 作業 | [prod-web-gates](./2026-08-11-lunarabi-prod-web-gates.md) | after 3（Web は並行可） |
+| 1 | `cursor/lunarabi-prod-readiness-impl-c3bc` | config + secrets + payment + gates を同一ブランチで実装可（分割コミット） | `cursor/lunarabi-nav-icons-ios-caps-c3bc` |
 
-## Already done (do not redo)
+詳細タスクは各 plan ファイル。**必須**: すべての shippable release は `lunarabi/tool/verify_release_inputs.sh` を通す。
 
-本番硬化 Flutter ブランチ 1–5（webview-guard → nav-icons-ios-caps）。
+## Critical fixes from plan adversarial review
 
-## Out of program
-
-- Laravel フル実装
-- App Review 通過そのもの（ゲート準備まで）
+- No debug signing fallback on shippable release
+- Native deep link hosts substituted + tested (not README-only)
+- Firebase placeholder connected to release preflight
+- Web gates require evidence manifest (docs alone ≠ closed)
