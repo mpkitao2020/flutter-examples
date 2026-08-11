@@ -12,6 +12,7 @@ import 'package:lunarabi/features/webview/trusted_bridge_origin.dart';
 import 'package:lunarabi/features/webview/webview_committed_url.dart';
 import 'package:lunarabi/features/webview/webview_navigation_handler.dart';
 import 'package:lunarabi/features/webview/webview_navigation_policy.dart';
+import 'package:lunarabi/features/webview/webview_shell.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -133,6 +134,29 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('bridge bootstrap injection gate', () {
+    test('deepLinkHost の page finish では full bridge bootstrap を注入しない', () {
+      committedUrl.markPageFinished(
+        Uri.parse('https://app.lunarabi.example/pay'),
+      );
+
+      expect(
+        committedUrl.committedUri,
+        Uri.parse('https://app.lunarabi.example/pay'),
+      );
+      expect(committedUrl.isTrusted, isFalse);
+      expect(shouldInjectBridgeBootstrap(committedUrl), isFalse);
+    });
+
+    test('webBaseUrl origin の page finish では full bridge bootstrap を注入する', () {
+      committedUrl.markPageFinished(
+        Uri.parse('https://dev.lunarabi.example/articles/1'),
+      );
+
+      expect(shouldInjectBridgeBootstrap(committedUrl), isTrue);
     });
   });
 }

@@ -15,27 +15,30 @@ class BridgeHost {
     required this.auth,
     required this.push,
     this._emitter,
+    this.onReady,
   });
 
   final BottomNavController nav;
   final AuthTokenStore auth;
   final PushTokenStore push;
+  final VoidCallback? onReady;
 
   BridgeEmitter? _emitter;
   WebViewController? _controller;
-  var _attached = false;
+  var _channelEnsured = false;
 
   static const channelName = 'LunarabiBridgeNative';
 
-  bool get isAttached => _attached;
+  bool get isAttached => _channelEnsured;
 
   void setEmitter(BridgeEmitter emitter) {
     _emitter = emitter;
   }
 
-  Future<void> attach(WebViewController controller, {required String platform}) async {
+  Future<void> ensureChannel(WebViewController controller) async {
     _controller = controller;
     _emitter ??= _emitViaController;
+    if (_channelEnsured) return;
 
     await controller.addJavaScriptChannel(
       channelName,
@@ -44,27 +47,31 @@ class BridgeHost {
         handleFromJs(message.message);
       },
     );
+    _channelEnsured = true;
+  }
 
+  Future<void> injectBootstrap({required String platform}) async {
+    final controller = _controller;
+    if (controller == null) {
+      debugPrint('BridgeHost: cannot inject bootstrap before ensureChannel');
+      return;
+    }
     await controller.runJavaScript(_bootstrapJs);
-    _attached = true;
-
     await emitToJs(
       BridgeMessage(
         type: BridgeTypes.bridgeReady,
         payload: {'platform': platform},
       ),
     );
+    onReady?.call();
+  }
 
-    // If a push token already exists, notify Web once.
-    final existing = push.token;
-    if (existing != null) {
-      await emitToJs(
-        BridgeMessage(
-          type: BridgeTypes.pushSetToken,
-          payload: {'token': existing},
-        ),
-      );
-    }
+  Future<void> attach(
+    WebViewController controller, {
+    required String platform,
+  }) async {
+    await ensureChannel(controller);
+    await injectBootstrap(platform: platform);
   }
 
   Future<void> emitToJs(BridgeMessage message) async {
@@ -149,10 +156,7 @@ class BridgeHost {
   Future<void> notifyPushToken(String token) {
     push.setToken(token);
     return emitToJs(
-      BridgeMessage(
-        type: BridgeTypes.pushSetToken,
-        payload: {'token': token},
-      ),
+      BridgeMessage(type: BridgeTypes.pushSetToken, payload: {'token': token}),
     );
   }
 

@@ -11,6 +11,8 @@ import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
 import 'package:lunarabi/features/bridge/bridge_message.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
 void main() {
   late BottomNavController nav;
@@ -66,9 +68,7 @@ void main() {
     expect(response.payload['ok'], isTrue);
     expect(response.payload['token'], 'abc-token');
 
-    await host.handleFromJs(
-      '{"type":"auth.clearBearerToken","payload":{}}',
-    );
+    await host.handleFromJs('{"type":"auth.clearBearerToken","payload":{}}');
     expect(auth.bearerToken, isNull);
   });
 
@@ -93,4 +93,50 @@ void main() {
     );
     expect(emitted.single.payload['token'], 'fcm-1');
   });
+
+  test('injectBootstrap は channel を増やさず trusted page ごとに ready を出す', () async {
+    var readyCount = 0;
+    host = BridgeHost(
+      nav: nav,
+      auth: auth,
+      push: push,
+      emitter: (message) async => emitted.add(message),
+      onReady: () => readyCount += 1,
+    );
+    final platform = _FakePlatformWebViewController();
+    final controller = WebViewController.fromPlatform(platform);
+
+    await host.ensureChannel(controller);
+    await host.injectBootstrap(platform: 'android');
+    await host.injectBootstrap(platform: 'android');
+
+    expect(platform.channelNames, [BridgeHost.channelName]);
+    expect(
+      platform.javaScripts.where((script) => script.contains('LunarabiBridge')),
+      hasLength(2),
+    );
+    expect(
+      emitted.where((message) => message.type == BridgeTypes.bridgeReady),
+      hasLength(2),
+    );
+    expect(readyCount, 2);
+  });
+}
+
+class _FakePlatformWebViewController extends PlatformWebViewController {
+  _FakePlatformWebViewController()
+    : super.implementation(const PlatformWebViewControllerCreationParams());
+
+  final channelNames = <String>[];
+  final javaScripts = <String>[];
+
+  @override
+  Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {
+    channelNames.add(params.name);
+  }
+
+  @override
+  Future<void> runJavaScript(String javaScript) async {
+    javaScripts.add(javaScript);
+  }
 }

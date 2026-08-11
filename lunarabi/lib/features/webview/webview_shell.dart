@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarabi/core/env/app_config.dart';
@@ -15,6 +17,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 typedef NavigatorReady = void Function(AppNavigator navigator, HostGuard guard);
 typedef PurchasePressed =
     Future<void> Function(BuildContext context, AppNavigator navigator);
+
+@visibleForTesting
+bool shouldInjectBridgeBootstrap(WebViewCommittedUrl committedUrl) {
+  return committedUrl.isTrusted;
+}
 
 Future<bool> _launchUrl(
   Uri uri, {
@@ -62,7 +69,6 @@ class _WebViewShellState extends State<WebViewShell> {
   late final PushTokenStore _push;
   late final BridgeHost _bridge;
   var _readyNotified = false;
-  var _bridgeAttached = false;
 
   @override
   void initState() {
@@ -74,11 +80,9 @@ class _WebViewShellState extends State<WebViewShell> {
         widget.bridgeHost ?? BridgeHost(nav: _nav, auth: _auth, push: _push);
 
     _configureNavigationState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(_buildNavigationDelegate())
-      ..loadRequest(widget.config.webBaseUrl);
+    _controller = WebViewController();
     _navigator = WebViewAppNavigator(guard: _guard, controller: _controller);
+    unawaited(_configureControllerAndLoad());
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_readyNotified) {
@@ -124,22 +128,38 @@ class _WebViewShellState extends State<WebViewShell> {
     if (uri != null) {
       _committedUrl.markPageFinished(uri);
     }
-    _ensureBridgeAttached();
+    if (shouldInjectBridgeBootstrap(_committedUrl)) {
+      unawaited(_injectBridgeBootstrap());
+    }
   }
 
-  Future<void> _ensureBridgeAttached() async {
-    if (_bridgeAttached) return;
-    _bridgeAttached = true;
+  Future<void> _configureControllerAndLoad() async {
+    await _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await _controller.setNavigationDelegate(_buildNavigationDelegate());
+    await _ensureBridgeChannel();
+    await _controller.loadRequest(widget.config.webBaseUrl);
+  }
+
+  Future<void> _ensureBridgeChannel() async {
+    try {
+      await _bridge.ensureChannel(_controller);
+    } catch (error, stack) {
+      // Platform views / missing channel support in tests should not crash the shell.
+      debugPrint('Bridge channel setup failed: $error');
+      debugPrint('$stack');
+    }
+  }
+
+  Future<void> _injectBridgeBootstrap() async {
     final platform = defaultTargetPlatform == TargetPlatform.iOS
         ? 'ios'
         : 'android';
     try {
-      await _bridge.attach(_controller, platform: platform);
+      await _bridge.injectBootstrap(platform: platform);
     } catch (error, stack) {
       // Platform views / missing channel support in tests should not crash the shell.
-      debugPrint('Bridge attach failed: $error');
+      debugPrint('Bridge bootstrap inject failed: $error');
       debugPrint('$stack');
-      _bridgeAttached = false;
     }
   }
 
@@ -149,13 +169,21 @@ class _WebViewShellState extends State<WebViewShell> {
     if (oldWidget.config.flavor != widget.config.flavor ||
         oldWidget.launchUrlFn != widget.launchUrlFn) {
       _configureNavigationState();
-      _controller.setNavigationDelegate(_buildNavigationDelegate());
       _navigator = WebViewAppNavigator(guard: _guard, controller: _controller);
-      _bridgeAttached = false;
-      if (oldWidget.config.flavor != widget.config.flavor) {
-        _controller.loadRequest(widget.config.webBaseUrl);
-      }
+      unawaited(
+        _reconfigureController(
+          reload: oldWidget.config.flavor != widget.config.flavor,
+        ),
+      );
       widget.onNavigatorReady?.call(_navigator, _guard);
+    }
+  }
+
+  Future<void> _reconfigureController({required bool reload}) async {
+    await _controller.setNavigationDelegate(_buildNavigationDelegate());
+    await _ensureBridgeChannel();
+    if (reload) {
+      await _controller.loadRequest(widget.config.webBaseUrl);
     }
   }
 
