@@ -7,6 +7,8 @@ import 'package:lunarabi/core/app_services.dart';
 import 'package:lunarabi/core/env/app_config.dart';
 import 'package:lunarabi/core/navigation/app_navigator.dart';
 import 'package:lunarabi/features/deeplink/deep_link_listener.dart';
+import 'package:lunarabi/features/payments/gmo_link_payment.dart';
+import 'package:lunarabi/features/payments/payment_coordinator.dart';
 import 'package:lunarabi/features/push/notification_link_parser.dart';
 import 'package:lunarabi/features/push/push_service.dart';
 import 'package:lunarabi/features/webview/webview_shell.dart';
@@ -40,10 +42,38 @@ class _LunarabiAppState extends State<LunarabiApp> {
   late AppConfig _config = widget.config;
   DeepLinkListener? _deepLinkListener;
   PushService? _pushService;
+  GmoLinkPayment? _gmo;
+  PaymentCoordinator? _payments;
   var _pushStarted = false;
 
   void _switchFlavor(Flavor flavor) {
-    setState(() => _config = _config.copyWithFlavor(flavor));
+    setState(() {
+      _config = _config.copyWithFlavor(flavor);
+      _payments = null;
+    });
+  }
+
+  PaymentCoordinator _ensurePayments(AppNavigator navigator) {
+    final existing = _payments;
+    if (existing != null && identical(existing.config, _config)) {
+      return existing;
+    }
+    _gmo?.dispose();
+    final gmo = GmoLinkPayment(
+      backend: AppServices.paymentBackend,
+      bus: AppServices.deepLinkBus,
+      navigator: navigator,
+      config: _config,
+    );
+    _gmo = gmo;
+    final coordinator = PaymentCoordinator(
+      backend: AppServices.paymentBackend,
+      iap: AppServices.iapPurchaseService,
+      gmo: gmo,
+      config: _config,
+    );
+    _payments = coordinator;
+    return coordinator;
   }
 
   Future<void> _onNavigatorReady(
@@ -59,6 +89,9 @@ class _LunarabiAppState extends State<LunarabiApp> {
     );
     _deepLinkListener = listener;
     await listener.start();
+
+    final payments = _ensurePayments(navigator);
+    await payments.gmo.attachCompleter();
 
     if (!_pushStarted) {
       _pushStarted = true;
@@ -79,6 +112,7 @@ class _LunarabiAppState extends State<LunarabiApp> {
   @override
   void dispose() {
     _deepLinkListener?.dispose();
+    _gmo?.dispose();
     super.dispose();
   }
 
@@ -94,6 +128,10 @@ class _LunarabiAppState extends State<LunarabiApp> {
         authTokenStore: AppServices.authTokenStore,
         pushTokenStore: AppServices.pushTokenStore,
         bridgeHost: AppServices.bridgeHost,
+        onPurchasePressed: (context, navigator) async {
+          final payments = _ensurePayments(navigator);
+          await payments.openPurchase(context, navigator: navigator);
+        },
       ),
     );
   }

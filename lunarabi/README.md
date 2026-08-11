@@ -114,15 +114,37 @@ fvm flutter test
 - `test/core/navigation/host_guard_test.dart` … 開いてよい URL の判定
 - `test/tool/forbid_firebase_options_test.dart` … FirebaseOptions 禁止の回帰
 - `test/features/bridge/` … JS ブリッジとボトムナビ
+- `test/features/payments/` … IAP / GMO / あおぞら
 - `test/branding/branding_assets_test.dart` … アイコン等の成果物パス
+
+## 決済（都度課金）
+
+AppBar「購入」から手段を選択する。商品 ID は **`lunarabi.credit.100`（consumable）**。
+
+| 手段 | 挙動 |
+|---|---|
+| ストアで購入 | `in_app_purchase` の consumable。成功後 `confirmIap` → `completePurchase` → `/pay/done` |
+| クレジットカード (GMO) | 外部ブラウザで checkout。完了 DL: `https://app.lunarabi.example/pay/gmo/complete?paymentId=...` |
+| 銀行振込 (あおぞら) | 口座表示。「入金を確認」押下ごとに API 1 回（自動ポーリングなし） |
+
+### Store 登録
+
+- Google Play / App Store Connect に consumable `lunarabi.credit.100` を登録
+- **復元 UI は置かない**（consumable のため）
+- サンドボックス: iOS は Sandbox アカウント、Android はライセンステスター
+- PSP 秘密鍵・GMO ショップ認証情報はアプリに入れない（バックエンドのみ）
+
+### iOS ガイドライン
+
+デジタルコンテンツ向けに Store 外決済（GMO / 振込）も出す。ガイドライン 3.1.1 のリスクはプロダクト側で合意済み。
 
 ## 審査メモ（先出し）
 
-アプリ内デジタルコンテンツでも、後続の payments ブランチで Store 外決済（GMO / 銀行振込）を出す予定。iOS ガイドライン 3.1.1 のリスクはプロダクト側で合意済み。
+アプリ内デジタルコンテンツでも Store 外決済（GMO / 銀行振込）を出す。iOS ガイドライン 3.1.1 のリスクはプロダクト側で合意済み。
 
 ## ディープリンク
 
 HTTPS のみ: `https://app.lunarabi.example/...`
 - Android App Links / iOS Universal Links（`Runner.entitlements`）
 - サンプル: `docs/well-known/*.example`
-- `/pay/gmo/complete` は DeepLinkBus へ（WebView 遷移なし）
+- `/pay/gmo/complete` は DeepLinkBus へ（WebView 遷移なし）。payments が confirm 後 `/pay/done` へ

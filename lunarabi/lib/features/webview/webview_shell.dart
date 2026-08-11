@@ -9,6 +9,10 @@ import 'package:lunarabi/features/bridge/token_stores.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 typedef NavigatorReady = void Function(AppNavigator navigator, HostGuard guard);
+typedef PurchasePressed = Future<void> Function(
+  BuildContext context,
+  AppNavigator navigator,
+);
 
 class WebViewShell extends StatefulWidget {
   const WebViewShell({
@@ -16,6 +20,7 @@ class WebViewShell extends StatefulWidget {
     required this.config,
     this.onSwitchFlavor,
     this.onNavigatorReady,
+    this.onPurchasePressed,
     this.navController,
     this.authTokenStore,
     this.pushTokenStore,
@@ -25,6 +30,7 @@ class WebViewShell extends StatefulWidget {
   final AppConfig config;
   final ValueChanged<Flavor>? onSwitchFlavor;
   final NavigatorReady? onNavigatorReady;
+  final PurchasePressed? onPurchasePressed;
   final BottomNavController? navController;
   final AuthTokenStore? authTokenStore;
   final PushTokenStore? pushTokenStore;
@@ -109,6 +115,11 @@ class _WebViewShellState extends State<WebViewShell> {
           showEnv ? 'Lunarabi (${widget.config.flavor.name})' : 'Lunarabi',
         ),
         actions: [
+          if (widget.onPurchasePressed != null)
+            TextButton(
+              onPressed: () => widget.onPurchasePressed!(context, _navigator),
+              child: const Text('購入'),
+            ),
           if (showEnv)
             PopupMenuButton<Flavor>(
               tooltip: '環境切替',
