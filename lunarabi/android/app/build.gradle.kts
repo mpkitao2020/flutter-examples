@@ -28,12 +28,17 @@ android {
     productFlavors {
         create("dev") {
             dimension = "env"
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "Lunarabi Dev")
         }
         create("stg") {
             dimension = "env"
+            applicationIdSuffix = ".stg"
+            resValue("string", "app_name", "Lunarabi Stg")
         }
         create("prod") {
             dimension = "env"
+            resValue("string", "app_name", "Lunarabi")
         }
     }
 

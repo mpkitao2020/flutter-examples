@@ -1,6 +1,28 @@
 # Lunarabi
 
-`com.wandit.lunarabi` 向けの薄い WebView シェル（scaffold）。
+`com.wandit.lunarabi` 向けの薄い WebView シェル（環境別にアプリ ID を分離）。
+
+## アプリ ID（環境別）
+
+| 環境 | Android applicationId / iOS Bundle ID |
+|---|---|
+| dev | `com.wandit.lunarabi.dev` |
+| stg | `com.wandit.lunarabi.stg` |
+| prod | `com.wandit.lunarabi` |
+
+Android は `applicationIdSuffix`、iOS は Debug→dev / Profile→stg / Release→prod。  
+Firebase の `package_name` / `BUNDLE_ID` も同じ値に揃える。
+
+iOS で stg ID を使うときは Profile（または将来の `*-stg` scheme）でビルドする。  
+`flutter run --flavor stg` の Android は `com.wandit.lunarabi.stg` になる。
+
+## 接続 URL（環境別）
+
+| 環境 | Web | API |
+|---|---|---|
+| dev | `https://dev.lunarabi.example` | `https://api-dev.lunarabi.example` |
+| stg | `https://stg.lunarabi.example` | `https://api-stg.lunarabi.example` |
+| prod | `https://www.lunarabi.example` | `https://api.lunarabi.example` |
 
 ## 前提
 
@@ -78,6 +100,7 @@ fvm flutter test
 テストコードには、初めて読む人向けの日本語コメントを付けている。
 
 - `test/core/env/app_config_test.dart` … 環境 URL / FLAVOR パース
+- `test/core/env/app_ids_test.dart` … 環境別アプリ ID
 - `test/core/navigation/host_guard_test.dart` … 開いてよい URL の判定
 - `test/tool/forbid_firebase_options_test.dart` … FirebaseOptions 禁止の回帰
 - `test/branding/branding_assets_test.dart` … アイコン等の成果物パス
