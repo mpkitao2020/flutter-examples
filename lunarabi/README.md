@@ -75,6 +75,18 @@ Dart 側に `FirebaseOptions` を入れていないか確認:
 bash tool/forbid_firebase_options.sh
 ```
 
+## iOS push / capabilities
+
+Runner の build configuration は push entitlements を明示的に付ける。
+
+| Configuration | CODE_SIGN_ENTITLEMENTS | aps-environment |
+|---|---|---|
+| Debug | `Runner/Runner.entitlements` | `development` |
+| Profile | `Runner/Runner.entitlements` | `development` |
+| Release | `Runner/Runner.Release.entitlements` | `production` |
+
+`Runner/Info.plist` は background push 用に `UIBackgroundModes` / `remote-notification` を持つ。実機での本番 push は、実 APNs key / Firebase project / provisioning profile の疎通確認を acceptance artifact として残すまで完了扱いにしない。
+
 ## JS ブリッジ / ボトムナビ
 
 ネイティブがボトムナビを描画し、Web と JSON で双方向通信します。
