@@ -41,13 +41,11 @@ debug / profile では AppBar メニューから環境切替が可能（release 
 | stg | `android/app/src/stg/google-services.json` | `ios/config/stg/GoogleService-Info.plist` |
 | prod | `android/app/src/prod/google-services.json` | `ios/config/prod/GoogleService-Info.plist` |
 
-iOS は Xcode の Configuration 名を `Debug-dev` / `Release-stg` のようにし、Build Phase で:
+iOS は Xcode の Configuration 名を `Debug-dev` / `Release-stg` のようにしてもよい。
+Build Phase「Copy GoogleService-Info」が `ios/scripts/copy_google_service_info.sh` を実行する。
 
-```bash
-"${PROJECT_DIR}/scripts/copy_google_service_info.sh"
-```
-
-を実行する（`CONFIGURATION` の末尾から flavor を取る）。
+標準の `Debug` / `Profile` / `Release` のままでも動く（それぞれ dev / stg / prod の plist をコピー）。
+将来 Configuration を `*-dev` 形式に増やした場合は、ハイフン以降が flavor になる。
 
 Dart 側に `FirebaseOptions` を入れていないか確認:
 
