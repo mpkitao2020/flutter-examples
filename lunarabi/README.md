@@ -144,6 +144,7 @@ bash tool/verify_release_inputs.sh
 - `docs/evidence/release_gates.manifest.json` の全 gate が closed
 
 現ツリーは production secrets と evidence が無いので、preflight が失敗するのが正しい。
+Xcode Archive / `flutter build ipa` でも Runner の early Build Phase が Release configuration で同じ preflight を実行する。
 
 ### Release dart-define
 
