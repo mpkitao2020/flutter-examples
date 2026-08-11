@@ -113,6 +113,7 @@ Flutter 側のテストだけでは、Web の CSP や token 保持方針は完�
 |---|---|
 | SPA が untrusted iframe から native channel に到達できない | CSP header dump または frame policy snippet + owner/date/signOff |
 | Web が token を memory-only で保持し、localStorage に保存しない | manual steps または code review link + owner/date/signOff |
+| Web が `push.setToken` の FCM token を登録 API に送る | manual/staging trace または code review link + owner/date/signOff |
 | Web が `bridge.ready` 後に `auth.getStoredToken` を呼ぶ | manual/staging trace + owner/date/signOff |
 | logout / 401 で Web が `auth.clearBearerToken` を呼ぶ | manual/staging trace + owner/date/signOff |
 

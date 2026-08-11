@@ -10,7 +10,6 @@ import 'package:lunarabi/features/deeplink/deep_link_listener.dart';
 import 'package:lunarabi/features/payments/gmo_completer_lifecycle.dart';
 import 'package:lunarabi/features/payments/gmo_link_payment.dart';
 import 'package:lunarabi/features/payments/payment_coordinator.dart';
-import 'package:lunarabi/features/push/notification_link_parser.dart';
 import 'package:lunarabi/features/push/push_service.dart';
 import 'package:lunarabi/features/webview/webview_shell.dart';
 
@@ -107,7 +106,7 @@ class _LunarabiAppState extends State<LunarabiApp> {
       _pushService = PushService(
         navigator: navigator,
         guard: guard,
-        backend: LoggingPushBackendClient(),
+        bridgeHost: AppServices.bridgeHost,
       );
       try {
         await _pushService!.start();

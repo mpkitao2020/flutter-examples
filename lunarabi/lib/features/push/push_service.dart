@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,8 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:lunarabi/core/app_services.dart';
 import 'package:lunarabi/core/navigation/app_navigator.dart';
+import 'package:lunarabi/features/bridge/bridge_host.dart';
 import 'package:lunarabi/features/push/notification_link_parser.dart';
 
 @pragma('vm:entry-point')
@@ -19,20 +20,25 @@ class PushService {
   PushService({
     required this.navigator,
     required this.guard,
-    required this.backend,
+    required BridgeHost bridgeHost,
+    PushBackendClient? backend,
     FirebaseMessaging? messaging,
     FlutterLocalNotificationsPlugin? localNotifications,
-  })  : _messaging = messaging ?? FirebaseMessaging.instance,
-        _local = localNotifications ?? FlutterLocalNotificationsPlugin();
+  }) : _bridgeHost = bridgeHost,
+       _messaging = messaging,
+       _local = localNotifications ?? FlutterLocalNotificationsPlugin();
 
   final AppNavigator navigator;
   final HostGuard guard;
-  final PushBackendClient backend;
-  final FirebaseMessaging _messaging;
+  final BridgeHost _bridgeHost;
+  FirebaseMessaging? _messaging;
   final FlutterLocalNotificationsPlugin _local;
 
   static const _channelId = 'lunarabi_default';
   static const _channelName = 'Lunarabi';
+
+  FirebaseMessaging get _messagingInstance =>
+      _messaging ??= FirebaseMessaging.instance;
 
   Future<void> start() async {
     const initSettings = InitializationSettings(
@@ -60,7 +66,8 @@ class PushService {
     if (Platform.isAndroid) {
       await _local
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.createNotificationChannel(
             const AndroidNotificationChannel(
               _channelId,
@@ -70,43 +77,43 @@ class PushService {
           );
     }
 
+    final messaging = _messagingInstance;
     try {
-      await _messaging.requestPermission();
+      await messaging.requestPermission();
     } catch (error) {
       debugPrint('PushService: permission request failed: $error');
     }
 
     try {
-      final token = await _messaging.getToken();
+      final token = await messaging.getToken();
       if (token != null) {
-        await _registerToken(token);
+        await publishToken(token);
       }
     } catch (error) {
       debugPrint('PushService: getToken failed: $error');
     }
 
-    _messaging.onTokenRefresh.listen((token) {
-      _registerToken(token);
+    messaging.onTokenRefresh.listen((token) {
+      unawaited(publishToken(token));
     });
 
     FirebaseMessaging.onMessage.listen(_onForeground);
     FirebaseMessaging.onMessageOpenedApp.listen(_onOpened);
 
-    final initial = await _messaging.getInitialMessage();
+    final initial = await messaging.getInitialMessage();
     if (initial != null) {
       await _onOpened(initial);
     }
   }
 
-  Future<void> _registerToken(String token) async {
+  Future<void> publishToken(String token) async {
     try {
-      await backend.register(token);
-      await AppServices.bridgeHost.notifyPushToken(
+      await _bridgeHost.notifyPushToken(
         token,
         platform: Platform.isIOS ? 'ios' : 'android',
       );
     } catch (error) {
-      debugPrint('PushService: register failed: $error');
+      debugPrint('PushService: publish token failed: $error');
     }
   }
 
