@@ -99,4 +99,90 @@ void main() {
       expect(original.flavor, Flavor.dev);
     });
   });
+
+  group('AppConfig.resolve', () {
+    test('dart-define 相当の値を flavor default より優先する', () {
+      final config = AppConfig.resolve(
+        isRelease: false,
+        rawFlavor: 'prod',
+        webBaseUrlDefine: 'https://web.lunarabi.jp',
+        apiBaseUrlDefine: 'https://api.lunarabi.jp',
+        deepLinkHostDefine: 'app.lunarabi.jp',
+      );
+
+      expect(config.webBaseUrl.toString(), 'https://web.lunarabi.jp');
+      expect(config.apiBaseUrl.toString(), 'https://api.lunarabi.jp');
+      expect(config.deepLinkHost, 'app.lunarabi.jp');
+      expect(config.flavor, Flavor.prod);
+    });
+
+    test('未指定の define は flavor default を使う', () {
+      final config = AppConfig.resolve(isRelease: false, rawFlavor: 'dev');
+
+      expect(config.webBaseUrl.toString(), 'https://dev.lunarabi.example');
+      expect(config.apiBaseUrl.toString(), 'https://api-dev.lunarabi.example');
+      expect(config.deepLinkHost, 'app.lunarabi.example');
+    });
+
+    test('URL define は absolute https だけ許可する', () {
+      expect(
+        () => AppConfig.resolve(
+          isRelease: false,
+          webBaseUrlDefine: 'http://web.lunarabi.jp',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => AppConfig.resolve(isRelease: false, apiBaseUrlDefine: '/api'),
+        throwsFormatException,
+      );
+    });
+
+    test('deep link host define は scheme や path を持てない', () {
+      expect(
+        () => AppConfig.resolve(
+          isRelease: false,
+          deepLinkHostDefine: 'https://app.lunarabi.jp',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => AppConfig.resolve(
+          isRelease: false,
+          deepLinkHostDefine: 'app.lunarabi.jp/path',
+        ),
+        throwsFormatException,
+      );
+    });
+  });
+
+  group('AppConfig.assertReleaseHosts', () {
+    test('placeholder / localhost / invalid TLD を release で拒否する', () {
+      for (final host in [
+        'app.lunarabi.example',
+        'api.lunarabi.invalid',
+        'localhost',
+      ]) {
+        final config = AppConfig(
+          flavor: Flavor.prod,
+          webBaseUrl: Uri.parse('https://www.lunarabi.jp'),
+          apiBaseUrl: Uri.parse('https://api.lunarabi.jp'),
+          deepLinkHost: host,
+        );
+
+        expect(config.assertReleaseHosts, throwsStateError);
+      }
+    });
+
+    test('本物の https URL と host-only deep link host は release で通る', () {
+      final config = AppConfig(
+        flavor: Flavor.prod,
+        webBaseUrl: Uri.parse('https://www.lunarabi.jp'),
+        apiBaseUrl: Uri.parse('https://api.lunarabi.jp'),
+        deepLinkHost: 'app.lunarabi.jp',
+      );
+
+      expect(config.assertReleaseHosts, returnsNormally);
+    });
+  });
 }

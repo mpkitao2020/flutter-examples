@@ -23,9 +23,10 @@ Future<void> main() async {
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  const rawFlavor = String.fromEnvironment('FLAVOR');
-  final flavor = parseFlavor(rawFlavor, isRelease: kReleaseMode);
-  final config = AppConfig.fromFlavor(flavor);
+  final config = AppConfig.resolve(isRelease: kReleaseMode);
+  if (kReleaseMode) {
+    config.assertReleaseHosts();
+  }
 
   runApp(LunarabiApp(config: config));
 }
