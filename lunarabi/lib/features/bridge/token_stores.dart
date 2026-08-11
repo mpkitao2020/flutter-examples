@@ -6,6 +6,16 @@ String maskSecret(String? value, {int keepTail = 4}) {
   return '***${value.substring(value.length - keepTail)}';
 }
 
+abstract interface class AuthTokenRepository {
+  Future<void> save(String token);
+  Future<String?> read();
+  Future<void> clear();
+}
+
+/// Legacy in-memory auth token cache used by the current bridge.
+///
+/// Use an [AuthTokenRepository] implementation for bearer tokens that must
+/// survive process restarts.
 class AuthTokenStore {
   String? _bearerToken;
 
