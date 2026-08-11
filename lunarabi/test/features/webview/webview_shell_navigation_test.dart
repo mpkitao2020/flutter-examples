@@ -159,4 +159,36 @@ void main() {
       expect(shouldInjectBridgeBootstrap(committedUrl), isTrue);
     });
   });
+
+  group('WebViewShell page finished bridge wiring', () {
+    test('deepLinkHost の page finish では bridge bootstrap を呼ばない', () {
+      var injectCount = 0;
+
+      handleWebViewShellPageFinished(
+        committedUrl: committedUrl,
+        url: 'https://app.lunarabi.example/pay',
+        injectBootstrap: () => injectCount += 1,
+      );
+
+      expect(
+        committedUrl.committedUri,
+        Uri.parse('https://app.lunarabi.example/pay'),
+      );
+      expect(committedUrl.isTrusted, isFalse);
+      expect(injectCount, 0);
+    });
+
+    test('webBaseUrl origin の page finish では bridge bootstrap を呼ぶ', () {
+      var injectCount = 0;
+
+      handleWebViewShellPageFinished(
+        committedUrl: committedUrl,
+        url: 'https://dev.lunarabi.example/articles/1',
+        injectBootstrap: () => injectCount += 1,
+      );
+
+      expect(committedUrl.isTrusted, isTrue);
+      expect(injectCount, 1);
+    });
+  });
 }

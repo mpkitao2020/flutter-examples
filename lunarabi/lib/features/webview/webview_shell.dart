@@ -23,6 +23,21 @@ bool shouldInjectBridgeBootstrap(WebViewCommittedUrl committedUrl) {
   return committedUrl.isTrusted;
 }
 
+@visibleForTesting
+void handleWebViewShellPageFinished({
+  required WebViewCommittedUrl committedUrl,
+  required String url,
+  required VoidCallback injectBootstrap,
+}) {
+  final uri = Uri.tryParse(url);
+  if (uri != null) {
+    committedUrl.markPageFinished(uri);
+  }
+  if (shouldInjectBridgeBootstrap(committedUrl)) {
+    injectBootstrap();
+  }
+}
+
 Future<bool> _launchUrl(
   Uri uri, {
   LaunchMode mode = LaunchMode.platformDefault,
@@ -124,13 +139,11 @@ class _WebViewShellState extends State<WebViewShell> {
   }
 
   void _markPageFinished(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri != null) {
-      _committedUrl.markPageFinished(uri);
-    }
-    if (shouldInjectBridgeBootstrap(_committedUrl)) {
-      unawaited(_injectBridgeBootstrap());
-    }
+    handleWebViewShellPageFinished(
+      committedUrl: _committedUrl,
+      url: url,
+      injectBootstrap: () => unawaited(_injectBridgeBootstrap()),
+    );
   }
 
   Future<void> _configureControllerAndLoad() async {
