@@ -1,0 +1,9 @@
+{
+  "name": "Flutter examples",
+  "user": "ubuntu",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "install": "./get_packages.sh"
+}
