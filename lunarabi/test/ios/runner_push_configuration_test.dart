@@ -29,6 +29,29 @@ void main() {
       },
     );
 
+    test('Runner runs release preflight before compiling sources', () {
+      final project = PbxProject(
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync(),
+      );
+
+      final buildPhases = project.runnerBuildPhases();
+      final sourcesIndex = buildPhases.indexWhere(
+        (phase) => phase.comment == 'Sources',
+      );
+      final preflightIndex = buildPhases.indexWhere(
+        (phase) => phase.body.contains('verify_release_inputs.sh'),
+      );
+
+      expect(preflightIndex, isNonNegative);
+      expect(sourcesIndex, isNonNegative);
+      expect(preflightIndex, lessThan(sourcesIndex));
+
+      final preflight = buildPhases[preflightIndex].body;
+      expect(preflight, contains(r'bash "${SRCROOT}/../tool/verify_release_inputs.sh"'));
+      expect(preflight, contains(r'CONFIGURATION'));
+      expect(preflight, contains(r'Release'));
+    });
+
     test('Runner entitlements keep domains and split APNs environments', () {
       final debugProfileEntitlements = File(
         'ios/Runner/Runner.entitlements',
@@ -150,6 +173,34 @@ class PbxProject {
     };
   }
 
+  List<PbxBuildPhase> runnerBuildPhases() {
+    final runnerTargetId = _objectIdsWithComment('Runner').firstWhere((id) {
+      final body = _objectBody(id);
+      return body.contains('isa = PBXNativeTarget;') &&
+          body.contains('name = Runner;');
+    });
+    final runnerTargetBody = _objectBody(runnerTargetId);
+    final buildPhasesMatch = RegExp(
+      r'buildPhases = \((?<phases>[\s\S]*?)^\s*\);',
+      multiLine: true,
+    ).firstMatch(runnerTargetBody);
+    if (buildPhasesMatch == null) {
+      throw StateError('Runner build phases missing');
+    }
+
+    return [
+      for (final match in RegExp(
+        r'^\s*([A-Z0-9]+) /\* (.*?) \*/,',
+        multiLine: true,
+      ).allMatches(buildPhasesMatch.namedGroup('phases')!))
+        PbxBuildPhase(
+          id: match.group(1)!,
+          comment: match.group(2)!,
+          body: _objectBody(match.group(1)!),
+        ),
+    ];
+  }
+
   Iterable<String> _objectIdsWithComment(String comment) {
     return RegExp(
       '^\\s*([A-Z0-9]+) /\\* ${RegExp.escape(comment)} \\*/ = \\{',
@@ -216,6 +267,18 @@ class PbxProject {
         line.group(1)!: line.group(2)!.replaceAll('"', ''),
     };
   }
+}
+
+class PbxBuildPhase {
+  const PbxBuildPhase({
+    required this.id,
+    required this.comment,
+    required this.body,
+  });
+
+  final String id;
+  final String comment;
+  final String body;
 }
 
 String? plistStringValue(String plist, String key) {
