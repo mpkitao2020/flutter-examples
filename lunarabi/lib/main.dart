@@ -46,6 +46,7 @@ class _LunarabiAppState extends State<LunarabiApp> {
   PaymentCoordinator? _payments;
   final _gmoLifecycle = GmoCompleterLifecycle();
   var _pushStarted = false;
+  var _coldStartLinkHandled = false;
 
   void _switchFlavor(Flavor flavor) {
     _payments = null;
@@ -64,6 +65,7 @@ class _LunarabiAppState extends State<LunarabiApp> {
       bus: AppServices.deepLinkBus,
       navigator: navigator,
       config: _config,
+      handledPaymentIds: AppServices.gmoHandledPaymentIds,
     );
     // Serialized dispose → attach (await via [_gmoLifecycle.ready]).
     _gmoLifecycle.rebind(gmo);
@@ -82,11 +84,18 @@ class _LunarabiAppState extends State<LunarabiApp> {
     HostGuard guard,
   ) async {
     await _deepLinkListener?.dispose();
+    final appLinks = AppLinks();
     final listener = DeepLinkListener(
       guard: guard,
       bus: AppServices.deepLinkBus,
       navigator: navigator,
-      appLinks: AppLinks(),
+      // Sticky getInitialLink must only be consumed once per process.
+      getInitialLink: () async {
+        if (_coldStartLinkHandled) return null;
+        _coldStartLinkHandled = true;
+        return appLinks.getInitialLink();
+      },
+      appLinks: appLinks,
     );
     _deepLinkListener = listener;
     await listener.start();

@@ -16,17 +16,18 @@ class GmoLinkPayment {
     required this.navigator,
     required this.config,
     this.launchUrlFn = launchUrl,
-  });
+    HandledIdSet? handledPaymentIds,
+  }) : _handledPaymentIds = handledPaymentIds ?? HandledIdSet();
 
   final PaymentBackendClient backend;
   final DeepLinkBus bus;
   final AppNavigator navigator;
   final AppConfig config;
   final Future<bool> Function(Uri url, {LaunchMode mode}) launchUrlFn;
+  final HandledIdSet _handledPaymentIds;
 
   StreamSubscription<ParsedDeepLink>? _sub;
   var _attached = false;
-  final HandledIdSet _handledPaymentIds = HandledIdSet();
 
   Future<void> attachCompleter() async {
     if (_attached) return;

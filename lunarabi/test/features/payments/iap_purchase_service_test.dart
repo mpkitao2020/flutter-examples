@@ -18,6 +18,7 @@ import 'package:lunarabi/features/payments/payment_backend_client.dart';
 class _RecordingBackend implements PaymentBackendClient {
   final confirmCalls = <Map<String, String>>[];
   Object? confirmError;
+  Duration? confirmDelay;
 
   @override
   Future<List<ProductRef>> listProducts() async => const [];
@@ -28,6 +29,8 @@ class _RecordingBackend implements PaymentBackendClient {
     required String verificationData,
     required String source,
   }) async {
+    final delay = confirmDelay;
+    if (delay != null) await Future<void>.delayed(delay);
     if (confirmError != null) throw confirmError!;
     confirmCalls.add({
       'productId': productId,
@@ -83,6 +86,8 @@ class _FakeStore implements IapStore {
   final bool buyResult;
   final completed = <PurchaseDetails>[];
   final _controller = StreamController<List<PurchaseDetails>>.broadcast();
+
+  void emit(List<PurchaseDetails> purchases) => _controller.add(purchases);
 
   @override
   Stream<List<PurchaseDetails>> get purchaseStream {
@@ -278,5 +283,98 @@ void main() {
       backend.confirmCalls.where((c) => c['verificationData'] == 'old'),
       isNotEmpty,
     );
+  });
+
+  test('遅い hygiene confirm 中でも backlog はセッション成功に使わない', () async {
+    final store = _FakeStore(
+      backlogOnListen: [
+        _purchase(
+          status: PurchaseStatus.purchased,
+          purchaseID: 'old-1',
+          serverData: 'old-1',
+        ),
+        _purchase(
+          status: PurchaseStatus.purchased,
+          purchaseID: 'old-2',
+          serverData: 'old-2',
+        ),
+      ],
+    );
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend()
+      ..confirmDelay = const Duration(milliseconds: 40);
+    final service = IapPurchaseService(
+      store: store,
+      sourceOverride: 'google_play',
+      buyTimeout: const Duration(milliseconds: 100),
+    );
+
+    final status = await service.buy(product: product, backend: backend);
+
+    expect(status, PaymentStatus.failure);
+    expect(backend.confirmCalls, hasLength(2));
+  });
+
+  test('confirm 中の canceled でも success を維持', () async {
+    final purchase =
+        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-race');
+    final store = _FakeStore(emitAfterBuy: [purchase]);
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend()
+      ..confirmDelay = const Duration(milliseconds: 60);
+    final service = IapPurchaseService(
+      store: store,
+      sourceOverride: 'google_play',
+    );
+
+    final buyFuture = service.buy(product: product, backend: backend);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    store.emit([
+      _purchase(status: PurchaseStatus.canceled, purchaseID: 'tx-race'),
+    ]);
+    final status = await buyFuture;
+
+    expect(status, PaymentStatus.success);
+    expect(backend.confirmCalls, hasLength(1));
+  });
+
+  test('timeout 中に confirm が終われば success', () async {
+    final store = _FakeStore(
+      emitAfterBuy: [
+        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-slow'),
+      ],
+    );
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend()
+      ..confirmDelay = const Duration(milliseconds: 80);
+    final service = IapPurchaseService(
+      store: store,
+      sourceOverride: 'google_play',
+      buyTimeout: const Duration(milliseconds: 20),
+    );
+
+    final status = await service.buy(product: product, backend: backend);
+
+    expect(status, PaymentStatus.success);
+  });
+
+  test('並行 buy は二件目を failure', () async {
+    final store = _FakeStore(
+      emitAfterBuy: [
+        _purchase(status: PurchaseStatus.purchased, purchaseID: 'tx-a'),
+      ],
+    );
+    addTearDown(store.dispose);
+    final backend = _RecordingBackend()
+      ..confirmDelay = const Duration(milliseconds: 50);
+    final service = IapPurchaseService(
+      store: store,
+      sourceOverride: 'google_play',
+    );
+
+    final first = service.buy(product: product, backend: backend);
+    final second = await service.buy(product: product, backend: backend);
+    expect(second, PaymentStatus.failure);
+    expect(await first, PaymentStatus.success);
   });
 }

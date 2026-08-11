@@ -42,6 +42,8 @@ class PluginIapStore implements IapStore {
   }
 }
 
+enum _BuyPhase { draining, armed }
+
 /// Thin wrapper around store purchase for testability.
 class IapPurchaseService {
   IapPurchaseService({
@@ -59,6 +61,7 @@ class IapPurchaseService {
   final Duration buyTimeout;
 
   final HandledIdSet _handledPurchaseKeys = HandledIdSet();
+  Future<PaymentStatus>? _activeBuy;
 
   String _key(PurchaseDetails purchase) {
     return purchase.purchaseID ??
@@ -66,6 +69,24 @@ class IapPurchaseService {
   }
 
   Future<PaymentStatus> buy({
+    required ProductRef product,
+    required PaymentBackendClient backend,
+  }) {
+    final existing = _activeBuy;
+    if (existing != null) {
+      debugPrint('IapPurchaseService: buy already in flight');
+      return Future.value(PaymentStatus.failure);
+    }
+    final future = _buyBody(product: product, backend: backend);
+    _activeBuy = future;
+    return future.whenComplete(() {
+      if (identical(_activeBuy, future)) {
+        _activeBuy = null;
+      }
+    });
+  }
+
+  Future<PaymentStatus> _buyBody({
     required ProductRef product,
     required PaymentBackendClient backend,
   }) async {
@@ -80,76 +101,105 @@ class IapPurchaseService {
 
     final details = response.productDetails.first;
     final completer = Completer<PaymentStatus>();
-    // Purchases observed before buyConsumable must not complete this session.
-    final seenBeforeBuy = <String>{};
-    var buyLaunched = false;
+    final seenBeforeArm = <String>{};
+    var phase = _BuyPhase.draining;
+    var drainHandlers = 0;
+    var confirmInFlight = false;
+    Future<bool>? lastConfirm;
+    var sessionOpen = true;
 
     late final StreamSubscription<List<PurchaseDetails>> sub;
-    sub = _store.purchaseStream.listen((purchases) async {
-      for (final purchase in purchases) {
-        if (purchase.productID != product.id) continue;
-        final key = _key(purchase);
+    sub = _store.purchaseStream.listen((purchases) {
+      drainHandlers += 1;
+      () async {
+        try {
+          for (final purchase in purchases) {
+            if (purchase.productID != product.id) continue;
+            final key = _key(purchase);
 
-        if (!buyLaunched) {
-          // Only remember unfinished *purchased* txs so pending/canceled IDs
-          // cannot poison a later purchased event with the same purchaseID.
-          if (purchase.status == PurchaseStatus.purchased) {
-            seenBeforeBuy.add(key);
-            await _confirmPurchased(
-              purchase: purchase,
-              product: product,
-              backend: backend,
-            );
+            if (phase == _BuyPhase.draining) {
+              if (purchase.status == PurchaseStatus.purchased) {
+                seenBeforeArm.add(key);
+                await _confirmPurchased(
+                  purchase: purchase,
+                  product: product,
+                  backend: backend,
+                );
+              }
+              continue;
+            }
+
+            if (seenBeforeArm.contains(key)) continue;
+
+            switch (purchase.status) {
+              case PurchaseStatus.purchased:
+                if (completer.isCompleted) break;
+                if (_handledPurchaseKeys.contains(key)) break;
+                confirmInFlight = true;
+                final future = _confirmPurchased(
+                  purchase: purchase,
+                  product: product,
+                  backend: backend,
+                );
+                lastConfirm = future;
+                final ok = await future;
+                confirmInFlight = false;
+                if (!sessionOpen) break;
+                if (!completer.isCompleted) {
+                  completer.complete(
+                    ok ? PaymentStatus.success : PaymentStatus.failure,
+                  );
+                }
+              case PurchaseStatus.error:
+              case PurchaseStatus.canceled:
+                // Don't lose a successful confirm to a racing cancel/error.
+                if (confirmInFlight) break;
+                if (!sessionOpen) break;
+                if (!completer.isCompleted) {
+                  completer.complete(PaymentStatus.failure);
+                }
+              case PurchaseStatus.pending:
+                break;
+              case PurchaseStatus.restored:
+                break;
+            }
           }
-          continue;
+        } finally {
+          drainHandlers -= 1;
         }
-
-        if (seenBeforeBuy.contains(key)) continue;
-
-        switch (purchase.status) {
-          case PurchaseStatus.purchased:
-            if (completer.isCompleted) break;
-            if (_handledPurchaseKeys.contains(key)) break;
-            final ok = await _confirmPurchased(
-              purchase: purchase,
-              product: product,
-              backend: backend,
-            );
-            if (!completer.isCompleted) {
-              completer.complete(ok ? PaymentStatus.success : PaymentStatus.failure);
-            }
-          case PurchaseStatus.error:
-          case PurchaseStatus.canceled:
-            if (!completer.isCompleted) {
-              completer.complete(PaymentStatus.failure);
-            }
-          case PurchaseStatus.pending:
-            break;
-          case PurchaseStatus.restored:
-            // Consumable: ignore restore path for this buy session.
-            break;
-        }
-      }
+      }();
     });
 
-    // Drain any immediate backlog before accepting new buy events.
+    // Drain synchronous / microtask backlog while handlers settle.
     await Future<void>.delayed(Duration.zero);
-    buyLaunched = true;
+    while (drainHandlers > 0) {
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    // Arm only after drain is idle, then start the store sheet.
+    phase = _BuyPhase.armed;
 
     final started = await _store.buyConsumable(
       purchaseParam: PurchaseParam(productDetails: details),
     );
     if (!started && !completer.isCompleted) {
+      sessionOpen = false;
       await sub.cancel();
       return PaymentStatus.failure;
     }
 
     try {
-      return await completer.future.timeout(
-        buyTimeout,
-        onTimeout: () => PaymentStatus.failure,
-      );
+      return await completer.future.timeout(buyTimeout);
+    } on TimeoutException {
+      sessionOpen = false;
+      final pending = lastConfirm;
+      if (pending != null) {
+        final ok = await pending;
+        return ok ? PaymentStatus.success : PaymentStatus.failure;
+      }
+      return PaymentStatus.failure;
     } finally {
+      sessionOpen = false;
       await sub.cancel();
     }
   }

@@ -3,6 +3,7 @@ import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
 import 'package:lunarabi/features/deeplink/deep_link_bus.dart';
+import 'package:lunarabi/features/payments/handled_id_set.dart';
 import 'package:lunarabi/features/payments/iap_purchase_service.dart';
 import 'package:lunarabi/features/payments/payment_backend_client.dart';
 
@@ -19,6 +20,10 @@ class AppServices {
     auth: authTokenStore,
     push: pushTokenStore,
   );
+
+  /// Shared across GMO completer rebinds so cold-start paymentIds are not
+  /// confirmed twice when the listener is recreated (e.g. flavor switch).
+  static final gmoHandledPaymentIds = HandledIdSet();
 
   /// Fake in debug/profile for local flows; fail-closed in release until a
   /// real HTTP [PaymentBackendClient] is injected.

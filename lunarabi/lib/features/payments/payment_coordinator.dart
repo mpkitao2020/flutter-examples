@@ -21,16 +21,33 @@ class PaymentCoordinator {
   final GmoLinkPayment gmo;
   final AppConfig config;
 
+  var _opening = false;
+
   Future<void> openPurchase(
     BuildContext context, {
     required AppNavigator navigator,
   }) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _openPurchaseBody(context, navigator: navigator);
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _openPurchaseBody(
+    BuildContext context, {
+    required AppNavigator navigator,
+  }) async {
     final products = await backend.listProducts();
+    if (!context.mounted) return;
     if (products.isEmpty) {
-      debugPrint('PaymentCoordinator: no products');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('購入できる商品がありません')),
+      );
       return;
     }
-    if (!context.mounted) return;
 
     final product = products.first;
     final method = await showPaymentSheet(context, product: product);
@@ -50,27 +67,47 @@ class PaymentCoordinator {
           );
         }
       case PaymentMethod.gmoLink:
-        final launched = await gmo.startCheckout(productId: product.id);
-        if (!launched && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('決済ページを開けませんでした')),
-          );
+        try {
+          final launched = await gmo.startCheckout(productId: product.id);
+          if (!launched && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('決済ページを開けませんでした')),
+            );
+          }
+        } catch (error, stack) {
+          debugPrint('PaymentCoordinator: GMO start failed $error');
+          debugPrint('$stack');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('決済を開始できませんでした')),
+            );
+          }
         }
       case PaymentMethod.aozoraTransfer:
-        final session = await backend.createAozoraTransfer(
-          productId: product.id,
-        );
-        if (!context.mounted) return;
-        await Navigator.of(context).push<PaymentStatus>(
-          MaterialPageRoute(
-            builder: (_) => AozoraTransferPage(
-              session: session,
-              backend: backend,
-              navigator: navigator,
-              config: config,
+        try {
+          final session = await backend.createAozoraTransfer(
+            productId: product.id,
+          );
+          if (!context.mounted) return;
+          await Navigator.of(context).push<PaymentStatus>(
+            MaterialPageRoute(
+              builder: (_) => AozoraTransferPage(
+                session: session,
+                backend: backend,
+                navigator: navigator,
+                config: config,
+              ),
             ),
-          ),
-        );
+          );
+        } catch (error, stack) {
+          debugPrint('PaymentCoordinator: Aozora start failed $error');
+          debugPrint('$stack');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('振込案内を開始できませんでした')),
+            );
+          }
+        }
     }
   }
 }
