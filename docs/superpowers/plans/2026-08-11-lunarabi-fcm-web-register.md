@@ -4,7 +4,7 @@
 
 **Goal:** FCM トークンをネイティブから Web へ渡し、Web が登録 API を呼ぶ。ネイティブの Logging backend 登録を本番経路から外す。
 
-**Architecture:** PushService obtains token → PushTokenStore → BridgeHost.notifyPushToken including platform. On bridge.ready, resent if present. No HTTP register from Flutter.
+**Architecture:** PushService obtains token → PushTokenStore → BridgeHost.notifyPushToken including platform. **PushService owns ready replay** via BridgeHost `onReady`. No HTTP register from Flutter.
 
 **Tech Stack:** firebase_messaging, existing bridge
 
@@ -14,7 +14,8 @@
 ## Global Constraints
 
 - Payload includes `token` and `platform` (`ios`|`android`)
-- Web owns API registration
+- Web owns API registration — **external gate**
+- Ready replay owner = **PushService** (not BridgeHost ad-hoc)
 - Spec §3
 
 ---
@@ -25,6 +26,7 @@
 - Modify: `lunarabi/lib/features/bridge/bridge_host.dart`
 - Modify: `lunarabi/lib/features/push/push_service.dart`
 - Test: `lunarabi/test/features/bridge/bridge_host_test.dart` / new push bridge test
+- Update: frontend contract push section
 
 ```dart
 Future<void> notifyPushToken(String token, {required String platform}) {
@@ -47,8 +49,8 @@ Future<void> notifyPushToken(String token, {required String platform}) {
 **Files:**
 - Modify: `lunarabi/lib/features/push/push_service.dart`
 - Modify: `lunarabi/lib/main.dart`
-- Modify: `lunarabi/lib/features/push/notification_link_parser.dart` (deprecate or keep Logging client unused)
-- Test: unit test PushService.register path with fake bridge emitter
+- Modify: `lunarabi/lib/features/push/notification_link_parser.dart` — leave Logging client unused; do not move file unless trivial (M1: prefer leave alone)
+- Test: unit test PushService.publish path with fake bridge emitter
 
 **Behavior:**
 ```dart
@@ -60,23 +62,25 @@ Future<void> _publishToken(String token) async {
 }
 ```
 - Do not call `backend.register`
-- On bridge attach/ready, if store has token, resend
+- Local notification / logging helper failure must not prevent bridge notify (assert in test)
 
-- [ ] **Step 1: Test** no backend.register call; bridge notified
+- [ ] **Step 1: Test** no backend.register call; bridge notified even if helper throws
 - [ ] **Step 2: Implement**
-- [ ] **Step 3: README** Web must register token via API
+- [ ] **Step 3: README** Web must register token via API (**external gate**)
 - [ ] **Step 4: Commit** `feat(lunarabi): hand FCM token to Web for API registration`
 
 ---
 
-### Task 3: Resend token on bridge.ready
+### Task 3: PushService owns resend on bridge.ready
 
 **Files:**
-- Modify: `bridge_host.attach` / `injectBootstrap` path already emits ready — after ready, if push.token != null, emit push.setToken again (may already exist; ensure platform included)
+- Modify: `push_service.dart` — subscribe to `BridgeHost.onReady` (from branch 1); if store has token, call `notifyPushToken` again with platform
+- Ensure BridgeHost does **not** also auto-replay token (single owner)
+- Update frontend contract if needed
 
-- [ ] **Step 1: Test** existing token resent after ready
-- [ ] **Step 2: Implement if missing**
-- [ ] **Step 3: Commit** `fix(lunarabi): resend push token after bridge.ready`
+- [ ] **Step 1: Test** injectBootstrap twice with stored token ⇒ two bridge.ready + two push.setToken (platform included)
+- [ ] **Step 2: Implement ownership wiring**
+- [ ] **Step 3: Commit** `fix(lunarabi): PushService resends token after bridge.ready`
 
 ---
 
@@ -84,4 +88,5 @@ Future<void> _publishToken(String token) async {
 
 - [ ] No native API registration required for success
 - [ ] Platform always present
+- [ ] Single owner for ready replay = PushService
 - [ ] Spec §3 covered

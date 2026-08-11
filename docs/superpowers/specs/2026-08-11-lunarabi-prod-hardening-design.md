@@ -32,7 +32,7 @@ FCMはWeb登録、IAPはWeb起点、認証はSanctum BearerのSecure Storage復�
 | token復元 | Webが`auth.getStoredToken`を要求 |
 | 401 | Webが再ログイン＋Flutterへclear |
 | 外部リンク | 許可ホスト以外のhttp(s)とmailto/telは外部起動 |
-| システム戻る | WebView履歴があれば戻る。なければ終了／バックグラウンド |
+| システム戻る | Android: WebView履歴があれば戻る。なければ終了／バックグラウンド。iOS: AppBar戻るは無し。WebView の戻るジェスチャは WebKit 側に任せ、ネイティブシェルの interactive pop 要件は持たない |
 | ナビアイコン | 仮SVG4つ。差し替え可能パス |
 
 ## Architecture overview
@@ -43,10 +43,10 @@ Web (SPA)
   └─ Bridge post/get
 
 Flutter
-  ├─ WebView + HostGuard navigation
-  ├─ Secure Storage (Sanctum token)
-  ├─ FCM token → push.setToken
-  ├─ Store IAP only
+  ├─ WebView + HostGuard navigation + committed main-frame URL state
+  ├─ Secure Storage (Sanctum token) — trusted bridge origin only
+  ├─ FCM token → push.setToken (PushService owns replay)
+  ├─ Store IAP only (autoConsume:false; durable pending recovery)
   └─ Bottom nav (SVG)
 ```
 
@@ -54,11 +54,11 @@ Flutter
 
 | 順 | Branch | Deliverable |
 |---|---|---|
-| 1 | `cursor/lunarabi-webview-guard-c3bc` | navigation allowlist, external links, bridge reinject, system back |
-| 2 | `cursor/lunarabi-auth-storage-c3bc` | Secure Storage auth persistence |
-| 3 | `cursor/lunarabi-fcm-web-register-c3bc` | FCM to Web only |
-| 4 | `cursor/lunarabi-iap-bridge-c3bc` | Web-started IAP + verify handoff |
-| 5 | `cursor/lunarabi-nav-icons-ios-caps-c3bc` | nav SVG placeholders, iOS capabilities |
+| 1 | `cursor/lunarabi-webview-guard-c3bc` | navigation allowlist, external links, bridge reinject, committed URL state, Android system back |
+| 2 | `cursor/lunarabi-auth-storage-c3bc` | Secure Storage auth persistence + trusted-origin gate |
+| 3 | `cursor/lunarabi-fcm-web-register-c3bc` | FCM to Web only + ready replay ownership |
+| 4 | `cursor/lunarabi-iap-bridge-c3bc` | Web-started IAP + verify handoff + durable recovery |
+| 5 | `cursor/lunarabi-nav-icons-ios-caps-c3bc` | nav SVG placeholders, iOS capabilities wiring |
 
 Base: each branch stacks on the previous after merge, starting from `cursor/lunarabi-payments-followups-c3bc`.
 
@@ -79,23 +79,55 @@ Base: each branch stacks on the previous after merge, starting from `cursor/luna
 
 Deep links / push still use `HostGuard` + `AppNavigator`.
 
+**Policy split (required):**
+
+| Concern | Allowed set |
+|---|---|
+| In-WebView navigation / deep-link input | `{webBaseUrl.host, deepLinkHost}` via HostGuard |
+| Trusted bridge origin (may receive Sanctum token / sensitive bridge replies) | **`webBaseUrl.host` only** (https). `deepLinkHost` is **not** trusted for auth material unless it is identical to `webBaseUrl.host` |
+
+### Committed main-frame URL state
+
+Branch 1 owns a navigation state object used by later auth:
+
+- Clear committed URL on main-frame page start / navigation begin
+- Set committed URL only after an **allowed** main-frame navigation is finished (`onPageFinished` for allowed https hosts)
+- Auth and other sensitive bridge handlers read this object — not an ad-hoc `WebViewController` sync call
+- Stale URL during in-flight navigation ⇒ treat as untrusted (no token return)
+
 ### Back navigation
 
 - No AppBar back button
-- Android system back / iOS interactive pop:
-  - if WebView `canGoBack` → `goBack()`
-  - else → default app exit / background
+- **Android** system back (`PopScope`): if WebView `canGoBack` → `goBack()` and prevent pop; else allow pop (exit / background)
+- **iOS:** native shell does **not** claim interactive-pop parity. No AppBar back. Optional WebKit back-forward gestures may be enabled where supported, but acceptance is Android PopScope + no AppBar back
 
 ### Bridge lifecycle
 
-1. Register JS channel before first `loadRequest`
-2. On every allowed main-frame `onPageFinished`, reinject bootstrap JS
+1. Register JS channel before first `loadRequest` (`ensureChannel` once)
+2. On every allowed main-frame `onPageFinished`, reinject bootstrap JS (`injectBootstrap`)
 3. Emit `bridge.ready` with `{ platform }` after each reinject
-4. Do not expose bridge behavior on non-allowed documents (navigation already blocked)
+4. Do not load non-allowed documents in WebView (navigation already blocked)
+
+### Bridge sender-origin limitation (release gate)
+
+`webview_flutter` JavaScript channels do **not** expose a reliable per-message sender frame origin. Therefore:
+
+1. Native gate returns sensitive data only when **committed top-level URL** is a trusted bridge origin (`webBaseUrl.host`)
+2. **External release blocker (Web owner):** SPA must forbid untrusted third-party frames that can reach the native channel (no untrusted iframes embedding the bridge page; CSP `frame-ancestors` / frame restrictions as appropriate). Documented in frontend contract + README external gates — **not** marked done by Flutter tests alone
+
+### External launch failure
+
+- If `launchUrl` fails for external http(s)/mailto/tel, log and do not navigate in WebView
+- Platform notes (Android package visibility / iOS URL schemes) documented in README
 
 ### Remove
 
 - AppBar「購入」entry and native payment sheet launch from shell
+
+### Frontend contract timing
+
+- Create or import `docs/superpowers/frontend/2026-08-11-lunarabi-webview-bridge-contract.md` on the **first** branch that changes BridgeTypes (branch 2), then keep it current on branches 3–4
+- Contract updates are part of each branch's testable deliverable; `bridge_contract_surface_test.dart` remains the Dart lock (manually aligned with the markdown)
 
 ---
 
@@ -122,12 +154,19 @@ Deep links / push still use `HostGuard` + `AppNavigator`.
 { "ok": true, "token": "<token or null>" }
 ```
 
+Forbidden origin:
+
+```json
+{ "ok": false, "error": "forbidden_origin" }
+```
+
 ### Security rules
 
-- Return token only when current WebView URL host is allowed by HostGuard
-- Web keeps token in memory only (not localStorage)
+- Return token **only** when committed main-frame URL host is a **trusted bridge origin** (`webBaseUrl.host`), **not** merely HostGuard-allowed / `deepLinkHost`
+- Tests must assert: `webBaseUrl` may read; distinct `deepLinkHost` must not
+- Web keeps token in memory only (not localStorage) — **external Web gate**
 - Masked logs only
-- Laravel must revoke token on logout; Web then clears native storage
+- Laravel must revoke token on logout; Web then clears native storage — **external gates**
 
 ### Startup
 
@@ -149,7 +188,7 @@ Deep links / push still use `HostGuard` + `AppNavigator`.
 - notification open routing via HostGuard
 - notify Web via bridge
 
-### Web responsibilities
+### Web responsibilities (external gate)
 
 - receive `push.setToken`
 - call backend registration API with auth when logged in
@@ -167,11 +206,18 @@ Deep links / push still use `HostGuard` + `AppNavigator`.
 }
 ```
 
+### Ownership: ready replay
+
+- **PushService** owns publishing `push.setToken` (including platform)
+- **BridgeHost** emits `bridge.ready` and exposes an `onReady` / ready callback hook
+- PushService registers for ready and, if `PushTokenStore` has a token, publishes again
+- BridgeHost must **not** silently own token replay after branch 3 (single owner)
+- Test: `injectBootstrap` twice ⇒ two `bridge.ready` and two `push.setToken` (when token stored)
+
 ### Changes
 
 - Remove production use of `LoggingPushBackendClient.register` as backend registration
 - Keep latest token in `PushTokenStore`
-- On `bridge.ready`, if token exists, resend `push.setToken`
 - Do not block Web notification if a local logging helper fails
 
 ### iOS note
@@ -186,7 +232,8 @@ Capability wiring is in branch 5. Without it, token acquisition may fail on devi
 
 - Flutter handles Store IAP only
 - GMO / Aozora remain Web-only for this phase
-- Product id remains `lunarabi.credit.100` consumable unless Web sends another id
+- **Native product allowlist (this phase):** only `lunarabi.credit.100`. Unknown `productId` ⇒ reject before opening Store sheet (tests required)
+- Backend still enforces allowlist / package ids (out of app scope, release blocker)
 
 ### Bridge types
 
@@ -201,24 +248,55 @@ Capability wiring is in branch 5. Without it, token acquisition may fail on devi
 `platform`: `app_store` | `google_play`  
 `verificationData`: Store `serverVerificationData`
 
+### IAP store abstraction
+
+- Extend `IapStore.buyConsumable` to pass **`autoConsume: false`** on Android (or equivalent plugin API) so the Store cannot consume before Web verification
+- Tests assert: no `completePurchase` and no consume before matching `iap.confirmResult.ok == true`
+- On `ok:false` / timeout / cancel / error: **do not** `completePurchase` and **do not** consume; leave transaction unfinished for recovery (no “complete if store requires” ambiguity)
+
 ### Flow
 
 1. Web shows methods; user picks IAP
 2. Web posts `iap.start`
-3. Flutter queries store product and starts consumable purchase
-4. On purchased, Flutter emits `iap.purchaseUpdated` and waits for `iap.confirmResult`
+3. Flutter allowlists productId, queries store product, starts consumable with auto-consume disabled
+4. On purchased, Flutter persists pending state, emits `iap.purchaseUpdated`, waits for `iap.confirmResult`
 5. Web calls Laravel verify API with Sanctum Bearer
 6. Backend verifies with Apple/Google APIs, grants entitlement idempotently
 7. Web posts `iap.confirmResult { ok: true }`
-8. Flutter `completePurchase`, emits `iap.finished { completed }`
-9. On cancel/error/confirm failure, emit finished failed/canceled and do not grant
+8. Flutter `completePurchase`, clears pending, emits `iap.finished { completed }`
+9. On cancel/error/confirm failure/timeout: emit finished failed/canceled, keep unfinished purchased txs for recovery, do not grant
 
-### Pending recovery
+### Durable pending recovery
 
-- App-lifetime purchase stream observer
-- On startup/resume, unfinished purchased txs emit `iap.purchaseUpdated` again
-- Deduplicate by purchaseId
-- Do not `completePurchase` until Web confirms ok
+Persisted pending record (Secure Storage or equivalent durable store), keyed by purchase id:
+
+| Field | Purpose |
+|---|---|
+| `purchaseId` | Dedup key |
+| `productId` | Store product |
+| `platform` | `app_store` / `google_play` |
+| `verificationData` | serverVerificationData |
+| `status` | last known (`purchased` waiting confirm, etc.) |
+| `waitingConfirm` | bool |
+| `updatedAt` | diagnostics |
+
+Behavior:
+
+- App-lifetime purchase stream observer starts at app start (not per-buy)
+- On **startup** and **resume**: load durable pending + unfinished Store txs; emit `iap.purchaseUpdated` again (dedupe by purchaseId)
+- After Web reload: when `bridge.ready` fires while waiting confirm, re-emit `iap.purchaseUpdated` for pending purchased txs so Web can re-verify
+- Never `completePurchase` until Web confirms ok
+
+### Bridge dispatch wiring (no cyclic globals)
+
+Construction order:
+
+1. Build `BridgeHost` without IAP controller
+2. Build `IapBridgeController` with `BridgeHost` + IAP services
+3. Register IAP handler via `BridgeHost.registerHandler(prefix: 'iap.', handler: controller.handleFromJs)` (or equivalent command router)
+4. Start lifetime observer from `main` / AppServices after construction
+
+Tests: `iap.start` JS message reaches controller; non-IAP messages still use existing handlers.
 
 ### Backend expectations (out of app scope, required for prod)
 
@@ -245,7 +323,8 @@ lunarabi/branding/nav/notify.svg
 lunarabi/branding/nav/account.svg
 ```
 
-Use a Flutter SVG loader (`flutter_svg` or equivalent). README documents replacement.
+Use a Flutter SVG loader (`flutter_svg` or equivalent). README documents replacement.  
+Tests assert pubspec asset registration + each `NavTabId` maps to a declared path.
 
 Existing placeholders remain:
 
@@ -257,31 +336,48 @@ Existing placeholders remain:
 
 - Set `CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements`
 - Keep Associated Domains entry
-- Add `aps-environment` (development/production as appropriate per build)
+- `aps-environment`:
+  - Debug/Profile → `development`
+  - Release → `production` via config-specific entitlements **or** xcconfig substitution
+  - If only a single entitlements file is practical in this branch, attach `development` for device testing and list **production APNs entitlements** as an explicit **external release blocker** in the final checklist (do not claim production push is wired)
 - Add `UIBackgroundModes` → `remote-notification` if required for FCM background data
 
 Android release signing and real Firebase files remain configuration tasks, not this design's code deliverable beyond removing debug-only assumptions where practical.
 
 ---
 
+## External release gates (not satisfied by Flutter-only tests)
+
+Owner: Web / DevOps / Store compliance (outside this repo's Flutter branches)
+
+| Gate | Why |
+|---|---|
+| SPA forbids untrusted frames that can reach the JS bridge channel | Native cannot verify JS channel sender origin |
+| Web: token memory-only; getStoredToken after ready; clear on 401 | Auth restore contract |
+| Web: FCM registration API on `push.setToken` | Native no longer registers |
+| Web/Laravel: IAP verify API + idempotent grant | Flutter completes only after ok |
+| Real Firebase / APNs / domains / AASA / assetlinks / release signing | Config |
+| Production `aps-environment` if not config-switched in branch 5 | Push prod |
+| Japan GMO/Aozora Store compliance | Separate phase |
+
 ## Testing strategy
 
-- Unit/widget: navigation allow/deny matrix, secure storage roundtrip, FCM bridge payload, IAP bridge state machine, pending recovery
+- Unit/widget: navigation allow/deny matrix (incl. launch failure), secure storage roundtrip + trusted-origin split, FCM bridge payload + double ready replay, IAP allowlist + autoConsume false + complete gated + durable recovery + ready re-emit
 - Contract tests: new BridgeTypes locked
-- Manual device checklist in README: external links, token restore, FCM to Web, IAP sandbox
+- Manual / external checklist in README — labeled **external gates**, not “passed”
 
 ## Risks
 
-- Bearer in Web memory is still XSS-sensitive; HostGuard reduces native exfiltration
+- Bearer in Web memory is still XSS-sensitive; trusted-origin gate + no untrusted frames reduce native exfiltration
 - Without real backend verify API, IAP cannot ship
 - Japan external payment compliance for GMO/Aozora remains a release blocker until later phase
 - iOS signing/team still required for real device push
 
 ## Success criteria
 
-- Untrusted origins cannot stay in WebView or read stored token
-- Cold start restores Sanctum token only to allowed Web origin
-- FCM token reaches Web without native backend register
-- Web can start IAP with productId and complete only after verify ok
-- Nav uses swappable SVG placeholders
-- iOS entitlements are actually attached to the Runner target
+- Untrusted origins cannot stay in WebView; stored token readable only from trusted bridge origin (`webBaseUrl`)
+- Cold start restores Sanctum token only under that gate
+- FCM token reaches Web without native backend register; ready replay owned by PushService
+- Web can start IAP with allowlisted productId; no complete/consume before verify ok; durable recovery across process death and Web reload
+- Nav uses swappable SVG placeholders with asset registration tests
+- iOS entitlements are attached to the Runner target; production APNs status is honest in the checklist

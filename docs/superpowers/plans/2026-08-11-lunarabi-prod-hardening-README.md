@@ -2,7 +2,7 @@
 
 > Spec: [../specs/2026-08-11-lunarabi-prod-hardening-design.md](../specs/2026-08-11-lunarabi-prod-hardening-design.md)
 
-実装は **依存順の5ブランチ**。各プランは単独でテスト可能な成果物を出す。
+実装は **依存順の5ブランチ**。各プランは単独でテスト可能な Flutter 成果物を出す。Web/バックエンド義務は **External release gates** であり、Flutter テスト成功＝本番完了ではない。
 
 | 順 | Branch | Plan | Base |
 |---|---|---|---|
@@ -12,14 +12,24 @@
 | 4 | `cursor/lunarabi-iap-bridge-c3bc` | [iap-bridge](./2026-08-11-lunarabi-iap-bridge.md) | after 3 |
 | 5 | `cursor/lunarabi-nav-icons-ios-caps-c3bc` | [nav-icons-ios-caps](./2026-08-11-lunarabi-nav-icons-ios-caps.md) | after 4 |
 
-## Out of this program
+## Frontend contract
+
+- Lands on branch 2: `docs/superpowers/frontend/2026-08-11-lunarabi-webview-bridge-contract.md`
+- Updated on branches 3–4 as BridgeTypes change
+- Dart lock: `bridge_contract_surface_test.dart` (manually aligned)
+
+## Out of this program / External release gates
 
 - GMO / あおぞら Store 審査対応
 - 実 Firebase / 実ドメイン差し替え
 - Laravel 本体
+- SPA untrusted-frame / CSP policy for JS bridge
+- Web: auth restore UX, FCM register API, IAP verify API
+- Production APNs entitlements if not config-switched in branch 5
 
 ## Execution order
 
-1. Complete branch 1 tests + adversarial pass
-2. Stack branch 2 … 5 similarly
-3. Update frontend bridge contract after branches 2–4 land
+1. Adversarial approve on this design+plans, then Subagent-Driven per branch
+2. Complete branch 1 tests + task review
+3. Stack branch 2 … 5 similarly
+4. Final whole-branch review; external gates remain open until Web/DevOps owners close them

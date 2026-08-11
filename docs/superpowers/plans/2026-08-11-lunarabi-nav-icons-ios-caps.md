@@ -4,7 +4,7 @@
 
 **Goal:** ボトムナビを差し替え可能な仮SVGにし、iOS の Associated Domains / Push entitlements を Runner ターゲットへ実際に接続する。
 
-**Architecture:** Assets under `branding/nav/*.svg` loaded via `flutter_svg`. Xcode project sets `CODE_SIGN_ENTITLEMENTS` and adds `aps-environment` (+ background remote-notification if needed).
+**Architecture:** Assets under `branding/nav/*.svg` loaded via `flutter_svg`. Xcode project sets `CODE_SIGN_ENTITLEMENTS` and adds `aps-environment` (+ background remote-notification if needed). Production APNs honesty in checklist.
 
 **Tech Stack:** flutter_svg, Xcode pbxproj/entitlements/Info.plist
 
@@ -16,6 +16,7 @@
 - Tabs: home, search, notify, account
 - Spec §5
 - Do not claim production push works without real APNs/Firebase files
+- Prefer Debug/Profile=`development`, Release=`production` entitlements; if single file only, document production APNs as **external release blocker**
 
 ---
 
@@ -28,12 +29,14 @@
 - Create: `lunarabi/branding/nav/account.svg`
 - Modify: `lunarabi/pubspec.yaml` assets + `flutter_svg`
 - Modify: `lunarabi/branding/README.md`
+- Test: assert each path is listed under `flutter.assets` in pubspec (string/file test)
 
 Simple monochrome 24x24 path icons are fine.
 
 - [ ] **Step 1: Add SVGs and asset entries**
 - [ ] **Step 2: Document replacement**
-- [ ] **Step 3: Commit** `feat(lunarabi): add placeholder bottom nav SVGs`
+- [ ] **Step 3: Test** pubspec contains all four asset paths
+- [ ] **Step 4: Commit** `feat(lunarabi): add placeholder bottom nav SVGs`
 
 ---
 
@@ -54,7 +57,7 @@ const navIcons = {
 };
 ```
 
-- [ ] **Step 1: Update widget test to find SvgPicture / asset**
+- [ ] **Step 1: Update widget test to find SvgPicture / asset AND assert NavTabId→path map covers all tabs with pubspec-registered paths**
 - [ ] **Step 2: Implement**
 - [ ] **Step 3: Commit** `feat(lunarabi): render bottom nav with SVG assets`
 
@@ -63,20 +66,27 @@ const navIcons = {
 ### Task 3: iOS entitlements attached + push keys
 
 **Files:**
-- Modify: `lunarabi/ios/Runner/Runner.entitlements`
+- Modify: `lunarabi/ios/Runner/Runner.entitlements` (and optionally `Runner.Release.entitlements`)
 - Modify: `lunarabi/ios/Runner.xcodeproj/project.pbxproj`
 - Modify: `lunarabi/ios/Runner/Info.plist`
 - Modify: `lunarabi/README.md` device checklist
 
-Entitlements must include:
+Preferred:
+
+| Config | aps-environment |
+|---|---|
+| Debug / Profile | `development` |
+| Release | `production` |
+
+If Release-specific entitlements file is impractical in this branch, use `development` in the attached file and add checklist item: **「Release の aps-environment=production は未完了（external release blocker）」**.
+
+Associated Domains remain:
 
 ```xml
 <key>com.apple.developer.associated-domains</key>
 <array>
   <string>applinks:app.lunarabi.example</string>
 </array>
-<key>aps-environment</key>
-<string>development</string>
 ```
 
 pbxproj Debug/Release/Profile Runner configs:
@@ -84,6 +94,7 @@ pbxproj Debug/Release/Profile Runner configs:
 ```
 CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 ```
+(or Release points to Release entitlements)
 
 Info.plist:
 
@@ -104,15 +115,27 @@ Info.plist:
 
 **Files:**
 - Modify: `lunarabi/README.md`
+- Modify: `docs/superpowers/plans/2026-08-11-lunarabi-prod-hardening-README.md` if needed for external gates clarity
 
-Checklist bullets:
+Checklist must **separate**:
+
+**Flutter branch deliverables (code):**
+- HostGuard WebView + bridge reinject + committed URL
+- Secure auth + trusted origin
+- FCM → Web
+- IAP bridge + gated complete + durable recovery
+- Nav SVG + entitlements attached
+
+**External release gates (not done by Flutter tests):**
 - Replace Firebase placeholders
 - Real domains + AASA/assetlinks
 - Release signing
-- Web implements auth restore, FCM register, IAP verify bridge
+- SPA frame/CSP policy for bridge
+- Web: auth restore, FCM register API, IAP verify bridge
+- Production `aps-environment` if not config-switched
 - Japan external payment compliance still open for GMO/Aozora
 
-- [ ] **Step 1: Write checklist**
+- [ ] **Step 1: Write checklist with explicit External release gates section**
 - [ ] **Step 2: `fvm flutter test` full**
 - [ ] **Step 3: Commit** `docs(lunarabi): add production hardening checklist`
 
@@ -120,6 +143,7 @@ Checklist bullets:
 
 ## Self-review checklist
 
-- [ ] SVG paths swappable via branding/
+- [ ] SVG paths swappable via branding/ + asset registration tests
 - [ ] CODE_SIGN_ENTITLEMENTS present for Runner
+- [ ] Production push honesty in checklist
 - [ ] Spec §5 covered
