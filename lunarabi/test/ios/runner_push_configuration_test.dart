@@ -69,6 +69,55 @@ void main() {
         contains('remote-notification'),
       );
     });
+
+    test(
+      'materialize script updates both associated-domain entitlement files',
+      () async {
+        final temp = Directory.systemTemp.createTempSync(
+          'lunarabi-entitlements-',
+        );
+        addTearDown(() => temp.deleteSync(recursive: true));
+        final runnerDir = Directory('${temp.path}/ios/Runner')
+          ..createSync(recursive: true);
+        for (final name in [
+          'Runner.entitlements',
+          'Runner.Release.entitlements',
+        ]) {
+          File('ios/Runner/$name').copySync('${runnerDir.path}/$name');
+        }
+
+        final result = await Process.run(
+          'bash',
+          ['tool/materialize_ios_deeplink_host.sh'],
+          environment: {
+            ...Platform.environment,
+            'LUNARABI_ROOT': temp.path,
+            'LUNARABI_DEEP_LINK_HOST': 'app.lunarabi.jp',
+          },
+        );
+
+        expect(
+          result.exitCode,
+          0,
+          reason: '${result.stdout}\n${result.stderr}',
+        );
+        for (final name in [
+          'Runner.entitlements',
+          'Runner.Release.entitlements',
+        ]) {
+          final entitlements = File(
+            '${runnerDir.path}/$name',
+          ).readAsStringSync();
+          expect(
+            plistArrayValues(
+              entitlements,
+              'com.apple.developer.associated-domains',
+            ),
+            ['applinks:app.lunarabi.jp'],
+          );
+        }
+      },
+    );
   });
 }
 
