@@ -92,6 +92,18 @@ bash tool/forbid_firebase_options.sh
 native channel が存在する場合があるが、full bootstrap は注入しない。auth の set / clear / restore は
 committed main-frame URL が trusted origin でない場合 `forbidden_origin` を返す。
 
+### Auth token storage（ネイティブ）
+
+本番は `AppServices.authTokenRepository`（`SecureAuthTokenStore` シングルトン）を `main.dart` から
+`WebViewShell` に注入する。テストのみ DI で mock repository を渡せる。
+
+`flutter_secure_storage` ^11 の **パッケージ既定**（`const FlutterSecureStorage()`）を使用する。
+
+| プラットフォーム | 既定の保存先 | 追加設定 |
+|---|---|---|
+| Android | RSA OAEP + AES-GCM（API 23+; Flutter minSdk 24） | 不要（v10 以降 EncryptedSharedPreferences 非推奨） |
+| iOS | Keychain | 不要（App Groups 未使用） |
+
 ### 外部 release gate（Web / DevOps）
 
 Flutter 側のテストだけでは、Web の CSP や token 保持方針は完了扱いにしない。各 gate は
