@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
 import 'package:lunarabi/features/bridge/secure_auth_token_store.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
+import 'package:lunarabi/core/env/app_config.dart';
 import 'package:lunarabi/features/deeplink/deep_link_bus.dart';
 import 'package:lunarabi/features/payments/handled_id_set.dart';
 import 'package:lunarabi/features/payments/iap_bridge_controller.dart';
@@ -68,9 +68,13 @@ class AppServices {
   /// confirmed twice when the listener is recreated (e.g. flavor switch).
   static final gmoHandledPaymentIds = HandledIdSet();
 
-  /// Fake in debug/profile for local flows; fail-closed in release until a
-  /// real HTTP [PaymentBackendClient] is injected.
-  static final PaymentBackendClient paymentBackend = kReleaseMode
-      ? FailClosedPaymentBackendClient()
-      : FakePaymentBackendClient();
+  static PaymentBackendClient createPaymentBackend({
+    required AppConfig config,
+    required bool isRelease,
+  }) {
+    if (!isRelease) {
+      return FakePaymentBackendClient();
+    }
+    return HttpPaymentBackendClient(apiBaseUrl: config.apiBaseUrl);
+  }
 }

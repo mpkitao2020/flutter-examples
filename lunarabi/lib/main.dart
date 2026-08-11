@@ -67,8 +67,12 @@ class _LunarabiAppState extends State<LunarabiApp> with WidgetsBindingObserver {
     if (existing != null && identical(existing.config, _config)) {
       return existing;
     }
+    final backend = AppServices.createPaymentBackend(
+      config: _config,
+      isRelease: kReleaseMode,
+    );
     final gmo = GmoLinkPayment(
-      backend: AppServices.paymentBackend,
+      backend: backend,
       bus: AppServices.deepLinkBus,
       navigator: navigator,
       config: _config,
@@ -77,7 +81,7 @@ class _LunarabiAppState extends State<LunarabiApp> with WidgetsBindingObserver {
     // Serialized dispose → attach (await via [_gmoLifecycle.ready]).
     _gmoLifecycle.rebind(gmo);
     final coordinator = PaymentCoordinator(
-      backend: AppServices.paymentBackend,
+      backend: backend,
       gmo: gmo,
       config: _config,
     );

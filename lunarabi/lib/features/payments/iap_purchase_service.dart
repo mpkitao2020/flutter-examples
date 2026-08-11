@@ -104,6 +104,11 @@ class IapPurchaseService {
         '${purchase.productID}:${purchase.verificationData.serverVerificationData}:${purchase.status}';
   }
 
+  /// Legacy native-confirm purchase flow retained for regression tests.
+  ///
+  /// Production IAP uses the JS bridge path, where Web verifies receipts and
+  /// Flutter only completes a matching pending Store transaction.
+  @visibleForTesting
   Future<PaymentStatus> buy({
     required ProductRef product,
     required PaymentBackendClient backend,
