@@ -206,6 +206,10 @@ class _WebViewShellState extends State<WebViewShell> {
   }
 
   Future<bool> _popRouteOrExit(NavigatorState navigator) async {
+    if (!mounted) {
+      return true;
+    }
+
     if (!_routeCanPop) {
       setState(() => _routeCanPop = true);
       await WidgetsBinding.instance.endOfFrame;
