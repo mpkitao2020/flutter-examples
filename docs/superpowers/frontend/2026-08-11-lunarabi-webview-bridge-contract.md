@@ -95,6 +95,41 @@ Forbidden origin response:
 }
 ```
 
+Example: restore the native token after `bridge.ready`:
+
+```js
+const pendingBridgeRequests = new Map();
+
+function postNative(type, payload = {}) {
+  const requestId = crypto.randomUUID();
+  window.LunarabiBridge.post({ type, requestId, payload });
+  return new Promise((resolve, reject) => {
+    pendingBridgeRequests.set(requestId, { resolve, reject });
+  });
+}
+
+async function restoreNativeAuthToken() {
+  const response = await postNative("auth.getStoredToken");
+  if (response.ok && response.token) {
+    setBearerTokenInMemory(response.token);
+  }
+}
+
+window.__LUNARABI_NATIVE_EVENT__ = async (msg) => {
+  if (msg.type === "bridge.response") {
+    const pending = pendingBridgeRequests.get(msg.requestId);
+    if (!pending) return;
+    pendingBridgeRequests.delete(msg.requestId);
+    pending.resolve(msg.payload);
+    return;
+  }
+
+  if (msg.type === "bridge.ready") {
+    await restoreNativeAuthToken();
+  }
+};
+```
+
 ## Push messages
 
 `push.setToken`
@@ -114,6 +149,19 @@ Forbidden origin response:
 After each trusted `bridge.ready`, Flutter replays any stored FCM token as
 `push.setToken`. Allowed but non-trusted pages do not receive this replay.
 
+Example: register the native FCM token with the API:
+
+```js
+async function handleNativeEvent(msg) {
+  if (msg.type === "push.setToken") {
+    await api.post("/api/push/tokens", {
+      token: msg.payload.token,
+      platform: msg.payload.platform
+    });
+  }
+}
+```
+
 ## IAP messages
 
 The native shell exposes Web-started IAP through bridge messages only. Web asks
@@ -121,16 +169,121 @@ Flutter to start an allowlisted product, Flutter emits the Store receipt to Web,
 Web verifies it with the backend, then Web sends the verification result back to
 Flutter before native completion/consume.
 
-IAP message types:
+Native constraints:
 
-- `iap.start`
-- `iap.purchaseUpdated`
-- `iap.confirmResult`
-- `iap.finished`
+- Native product allowlist is only `lunarabi.credit.100`.
+- Native Store buys use `autoConsume:false`.
+- Flutter never calls `completePurchase` / consume before a matching
+  `iap.confirmResult` with `ok:true` and a live `PurchaseDetails`.
+- Pending purchases are durable. The purchase key is
+  `purchaseID ?? "$platform:$productId:$verificationData"`.
+- Timeout sets `waitingConfirm:false` with reason `timed_out`; late `ok:true`
+  after timeout is rejected until Store re-emits a live transaction.
+- Stale, duplicate, or unknown confirms return a bridge error and never complete
+  a second time.
+- Rehydration can re-emit durable pending records to Web. It does not complete
+  until Store re-emits the matching live transaction.
 
 All IAP messages are privileged. `iap.start`, `iap.confirmResult`, and every
 Flutter emit of `iap.purchaseUpdated` / `iap.finished` require the committed
 main-frame URL to match the trusted bridge origin.
+
+`iap.start`
+
+```json
+{
+  "type": "iap.start",
+  "requestId": "iap-start-1",
+  "payload": { "productId": "lunarabi.credit.100" }
+}
+```
+
+Successful start response:
+
+```json
+{
+  "type": "bridge.response",
+  "requestId": "iap-start-1",
+  "payload": { "ok": true }
+}
+```
+
+`iap.purchaseUpdated`
+
+```json
+{
+  "type": "iap.purchaseUpdated",
+  "payload": {
+    "purchaseKey": "tx-123",
+    "purchaseId": "tx-123",
+    "productId": "lunarabi.credit.100",
+    "platform": "google_play",
+    "verificationData": "server-receipt"
+  }
+}
+```
+
+`iap.confirmResult`
+
+```json
+{
+  "type": "iap.confirmResult",
+  "requestId": "iap-confirm-1",
+  "payload": {
+    "purchaseKey": "tx-123",
+    "ok": true
+  }
+}
+```
+
+`iap.finished`
+
+```json
+{
+  "type": "iap.finished",
+  "payload": {
+    "purchaseKey": "tx-123",
+    "productId": "lunarabi.credit.100",
+    "status": "completed"
+  }
+}
+```
+
+Failure statuses use `status:"failed"` or `status:"canceled"` and may include a
+`reason` such as `verification_failed` or `timed_out`.
+
+Example: start IAP, verify the receipt in Web, then hand the result back:
+
+```js
+async function startStoreCreditPurchase() {
+  const started = await postNative("iap.start", {
+    productId: "lunarabi.credit.100"
+  });
+  if (!started.ok) throw new Error(started.error);
+}
+
+async function handleIapPurchaseUpdated(payload) {
+  const result = await api.post("/api/iap/verify", {
+    purchaseKey: payload.purchaseKey,
+    productId: payload.productId,
+    platform: payload.platform,
+    verificationData: payload.verificationData
+  });
+
+  await postNative("iap.confirmResult", {
+    purchaseKey: payload.purchaseKey,
+    ok: result.ok === true
+  });
+}
+
+async function handleIapFinished(payload) {
+  if (payload.status === "completed") {
+    await refreshCreditBalance();
+    return;
+  }
+  showPurchaseFailure(payload.reason ?? payload.status);
+}
+```
 
 ## Trusted origin rule
 
@@ -149,14 +302,15 @@ payload handling:
 - `auth.clearBearerToken`
 - `auth.getStoredToken`
 - future `push.getToken`
-- future `iap.start`
-- future `iap.confirmResult`
+- `iap.start`
+- `iap.confirmResult`
 
 Sensitive Flutter to Web messages must only be emitted to trusted pages:
 
 - `bridge.ready` after full bootstrap
 - `push.setToken`
-- future IAP receipt or completion events
+- `iap.purchaseUpdated`
+- `iap.finished`
 
 ## Web release gates
 
@@ -171,4 +325,7 @@ Required artifacts before release:
 | Token stays in memory only | `evidence` manual test steps or code review link, `owner`, `date`, `signOff` |
 | Web calls `auth.getStoredToken` after `bridge.ready` | `evidence` manual or staging trace, `owner`, `date`, `signOff` |
 | Web clears native token on logout and 401 | `evidence` manual or staging trace, `owner`, `date`, `signOff` |
+| Web registers `push.setToken` with the API | `evidence` API trace or code review link, `owner`, `date`, `signOff` |
+| Web verify API validates Store receipt and backend product allowlist before `iap.confirmResult ok:true` | `evidence` API trace and allowlist review, `owner`, `date`, `signOff` |
+| Web handles IAP timeout / stale / duplicate / unknown confirm errors | `evidence` staging trace or automated test, `owner`, `date`, `signOff` |
 
