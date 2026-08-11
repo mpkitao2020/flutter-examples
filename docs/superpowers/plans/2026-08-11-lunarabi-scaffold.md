@@ -8,7 +8,8 @@
 
 **Tech Stack:** Flutter（FVM 具体バージョンピン）、`webview_flutter`、`firebase_core`（options なし）、Android product flavors、iOS schemes + plist copy
 
-**Branch:** `cursor/lunarabi-scaffold-c3bc`（base: `develop`）
+**Branch:** `cursor/lunarabi-scaffold-c3bc`（base: `develop`）  
+**Index:** [README.md](./README.md)
 
 ## Global Constraints
 

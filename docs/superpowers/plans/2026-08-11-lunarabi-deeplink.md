@@ -8,7 +8,8 @@
 
 **Tech Stack:** `app_links`、Android App Links intent-filter、iOS Associated Domains
 
-**Branch:** `cursor/lunarabi-deeplink-c3bc`（base: scaffold マージ後の `develop`）
+**Branch:** `cursor/lunarabi-deeplink-c3bc`（base: scaffold マージ後の `develop`。bridge 後推奨）  
+**Index:** [README.md](./README.md)
 
 ## Global Constraints
 

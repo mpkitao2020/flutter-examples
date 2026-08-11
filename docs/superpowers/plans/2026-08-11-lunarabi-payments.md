@@ -8,7 +8,8 @@
 
 **Tech Stack:** `in_app_purchase`, `url_launcher`, existing `DeepLinkBus` / `AppNavigator` / `HostGuard`
 
-**Branch:** `cursor/lunarabi-payments-c3bc`（base: deeplink マージ後の `develop`）
+**Branch:** `cursor/lunarabi-payments-c3bc`（base: deeplink マージ後の `develop`）  
+**Index:** [README.md](./README.md)
 
 ## Global Constraints
 

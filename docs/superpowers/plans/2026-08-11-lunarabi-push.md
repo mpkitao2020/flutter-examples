@@ -8,7 +8,9 @@
 
 **Tech Stack:** `firebase_core`, `firebase_messaging`, `flutter_local_notifications`
 
-**Branch:** `cursor/lunarabi-push-c3bc`（base: **deeplink マージ後**の `develop`。scaffold 直は不可）
+**Branch:** `cursor/lunarabi-push-c3bc`（base: **bridge マージ後**の `develop`。トークンを `push.setToken` で Web へ渡す）  
+**Index:** [README.md](./README.md)  
+**Frontend contract:** [../frontend/2026-08-11-lunarabi-webview-bridge-contract.md](../frontend/2026-08-11-lunarabi-webview-bridge-contract.md)
 
 ## Global Constraints
 
@@ -17,6 +19,7 @@
 - `PushBackendClient.register` は口のみ。失敗しても起動継続。token ログは末尾 6 文字以外 mask
 - package: `com.wandit.lunarabi`
 - Spec: `docs/superpowers/specs/2026-08-11-lunarabi-webview-design.md`
+- After token acquire/refresh, also publish via bridge `push.setToken`（`BridgeHost.emitToJs`）。bridge 未マージの一時 stub は禁止。base を bridge 後に固定する。
 
 ---
 

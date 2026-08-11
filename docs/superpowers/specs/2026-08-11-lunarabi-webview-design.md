@@ -169,13 +169,24 @@ debug/profile のみ環境メニュー。release では出さない。
 
 | Order | Branch | Plan | Base |
 |---|---|---|---|
-| 0 (docs) | `cursor/lunarabi-design-plans-c3bc` | this design + plans | `develop` |
+| 0 (docs) | `cursor/lunarabi-design-plans-c3bc` | design + plans + frontend bridge contract | `develop` |
 | 1 | `cursor/lunarabi-scaffold-c3bc` | scaffold | `develop`（docs マージ後推奨） |
-| 2 | `cursor/lunarabi-deeplink-c3bc` | deeplink | scaffold マージ後の `develop` |
-| 3 | `cursor/lunarabi-push-c3bc` | push | **deeplink マージ後**の `develop`（固定） |
-| 4 | `cursor/lunarabi-payments-c3bc` | payments | **deeplink マージ後**の `develop` |
+| 2 | `cursor/lunarabi-bridge-c3bc` | bridge（ボトムナビ + JS ブリッジ） | scaffold マージ後 |
+| 3 | `cursor/lunarabi-deeplink-c3bc` | deeplink | bridge マージ後推奨（scaffold 後でも可） |
+| 4 | `cursor/lunarabi-push-c3bc` | push | **bridge マージ後**（トークンを Web へ渡す） |
+| 5 | `cursor/lunarabi-payments-c3bc` | payments | **deeplink マージ後** |
 
-1 ブランチ = 1 PR。接尾辞は本エージェント指定の `-c3bc`。
+1 ブランチ = 1 PR。接尾辞は本エージェント指定の `-c3bc`。  
+プラン一覧: `docs/superpowers/plans/README.md`  
+フロント契約: `docs/superpowers/frontend/2026-08-11-lunarabi-webview-bridge-contract.md`
+
+### Bottom navigation + JS bridge (agreed direction)
+
+- ボトムナビ UI は Flutter ネイティブ
+- Web は表示／非表示・バッジ・アクティブ・Bearer を送信
+- Flutter はタブ押下と FCM トークンを Web へ通知
+- 詳細メッセージ型はフロント契約書を正本とする
+
 
 ## Testing
 
