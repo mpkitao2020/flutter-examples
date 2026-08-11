@@ -36,7 +36,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data
                     android:scheme="https"
-                    android:host="app.lunarabi.example"/>
+                    android:host="${deepLinkHost}"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
