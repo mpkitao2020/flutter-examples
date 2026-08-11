@@ -75,6 +75,16 @@ Dart 側に `FirebaseOptions` を入れていないか確認:
 bash tool/forbid_firebase_options.sh
 ```
 
+## JS ブリッジ / ボトムナビ
+
+ネイティブがボトムナビを描画し、Web と JSON で双方向通信します。
+
+- Flutter→JS: `window.__LUNARABI_NATIVE_EVENT__(msg)`
+- JS→Flutter: `window.LunarabiBridge.post(msg)`
+- 契約書（フロント向け）: リポジトリの `docs/superpowers/frontend/2026-08-11-lunarabi-webview-bridge-contract.md`（design-plans ブランチ）
+
+対応 type 例: `nav.setVisible` / `nav.setBadge` / `nav.setActive` / `nav.tabSelected` / `auth.*` / `push.*`
+
 ## ブランディング（アイコン / スプラッシュ / 通知アイコン）
 
 ソースは `branding/`。差し替え手順は `branding/README.md`。
@@ -103,6 +113,7 @@ fvm flutter test
 - `test/core/env/app_ids_test.dart` … 環境別アプリ ID
 - `test/core/navigation/host_guard_test.dart` … 開いてよい URL の判定
 - `test/tool/forbid_firebase_options_test.dart` … FirebaseOptions 禁止の回帰
+- `test/features/bridge/` … JS ブリッジとボトムナビ
 - `test/branding/branding_assets_test.dart` … アイコン等の成果物パス
 
 ## 審査メモ（先出し）
