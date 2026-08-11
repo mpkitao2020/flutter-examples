@@ -1,4 +1,4 @@
-enum PaymentMethod { storeIap, gmoLink, aozoraTransfer }
+enum PaymentMethod { gmoLink, aozoraTransfer }
 
 enum PaymentStatus { idle, pending, success, failure }
 

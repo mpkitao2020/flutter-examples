@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
@@ -5,6 +7,8 @@ import 'package:lunarabi/features/bridge/secure_auth_token_store.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
 import 'package:lunarabi/features/deeplink/deep_link_bus.dart';
 import 'package:lunarabi/features/payments/handled_id_set.dart';
+import 'package:lunarabi/features/payments/iap_bridge_controller.dart';
+import 'package:lunarabi/features/payments/iap_pending_store.dart';
 import 'package:lunarabi/features/payments/iap_purchase_service.dart';
 import 'package:lunarabi/features/payments/payment_backend_client.dart';
 
@@ -16,7 +20,10 @@ class AppServices {
   static final navController = BottomNavController();
   static final authTokenRepository = SecureAuthTokenStore();
   static final pushTokenStore = PushTokenStore();
+  static final iapPendingStore = SecureIapPendingStore();
+  static final iapPurchaseService = IapPurchaseService();
   static BridgeHost? _bridgeHost;
+  static IapBridgeController? _iapBridgeController;
 
   static BridgeHost get bridgeHost {
     final host = _bridgeHost;
@@ -25,6 +32,8 @@ class AppServices {
     }
     return host;
   }
+
+  static IapBridgeController? get iapBridgeController => _iapBridgeController;
 
   static BridgeHost createBridgeHost({
     required BottomNavController nav,
@@ -40,7 +49,18 @@ class AppServices {
       committedWebUri: committedWebUri,
       webBaseUrl: webBaseUrl,
     );
+    final iapBridgeController = IapBridgeController(
+      iap: iapPurchaseService,
+      bridge: host,
+      pending: iapPendingStore,
+      committedWebUri: committedWebUri,
+      webBaseUrl: webBaseUrl,
+    );
+    host.registerHandler('iap.', iapBridgeController.handleFromJs);
+    host.addReadyListener(iapBridgeController.onBridgeReady);
+    unawaited(iapBridgeController.startPurchaseStream());
     _bridgeHost = host;
+    _iapBridgeController = iapBridgeController;
     return host;
   }
 
@@ -53,6 +73,4 @@ class AppServices {
   static final PaymentBackendClient paymentBackend = kReleaseMode
       ? FailClosedPaymentBackendClient()
       : FakePaymentBackendClient();
-
-  static final iapPurchaseService = IapPurchaseService();
 }

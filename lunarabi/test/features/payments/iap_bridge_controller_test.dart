@@ -226,6 +226,65 @@ void main() {
       });
     },
   );
+
+  test(
+    'startup, resume, and bridge ready re-emit durable pending purchases',
+    () async {
+      final h = _Harness();
+      addTearDown(h.dispose);
+      await h.pending.upsert(
+        IapPendingRecord(
+          purchaseKey: 'tx-replay',
+          purchaseId: 'tx-replay',
+          productId: productId,
+          platform: 'google_play',
+          verificationData: 'server-token',
+          waitingConfirm: true,
+          updatedAt: DateTime.utc(2026, 8, 11),
+        ),
+      );
+
+      await h.controller.startPurchaseStream();
+      await h.controller.onAppResumed();
+      await h.controller.onBridgeReady();
+
+      expect(
+        h
+            .byType(BridgeTypes.iapPurchaseUpdated)
+            .map((message) => message.payload['purchaseKey']),
+        ['tx-replay', 'tx-replay', 'tx-replay'],
+      );
+      expect(h.store.completed, isEmpty);
+    },
+  );
+
+  test(
+    'rehydrated pending completes once after Store re-emits a live tx',
+    () async {
+      final h = _Harness(confirmTimeout: const Duration(seconds: 1));
+      addTearDown(h.dispose);
+      await h.pending.upsert(
+        IapPendingRecord(
+          purchaseKey: 'tx-live-again',
+          purchaseId: 'tx-live-again',
+          productId: productId,
+          platform: 'google_play',
+          verificationData: 'server-token',
+          waitingConfirm: true,
+          updatedAt: DateTime.utc(2026, 8, 11),
+        ),
+      );
+
+      await h.controller.startPurchaseStream();
+      final purchase = _purchase(purchaseID: 'tx-live-again');
+      h.store.emit([purchase, purchase]);
+      await _flush();
+      await h.confirm('tx-live-again', ok: true, requestId: 'confirm-live');
+
+      expect(h.store.completed, [purchase]);
+      expect(h.response('confirm-live').payload, {'ok': true});
+    },
+  );
 }
 
 class _Harness {

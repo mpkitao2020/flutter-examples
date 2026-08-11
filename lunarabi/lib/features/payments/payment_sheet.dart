@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lunarabi/features/payments/payment_models.dart';
 
-/// Bottom sheet that lists one product and three payment methods.
+/// Bottom sheet that lists one product and external payment methods.
 Future<PaymentMethod?> showPaymentSheet(
   BuildContext context, {
   required ProductRef product,
@@ -30,14 +30,13 @@ class PaymentSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(product.displayName, style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              product.displayName,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 4),
             Text(product.id, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 16),
-            ListTile(
-              title: const Text(storeLabel),
-              onTap: () => Navigator.pop(context, PaymentMethod.storeIap),
-            ),
             ListTile(
               title: const Text(gmoLabel),
               onTap: () => Navigator.pop(context, PaymentMethod.gmoLink),

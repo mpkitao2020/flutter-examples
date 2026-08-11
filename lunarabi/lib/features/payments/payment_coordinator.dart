@@ -3,7 +3,6 @@ import 'package:lunarabi/core/env/app_config.dart';
 import 'package:lunarabi/core/navigation/app_navigator.dart';
 import 'package:lunarabi/features/payments/aozora_transfer_page.dart';
 import 'package:lunarabi/features/payments/gmo_link_payment.dart';
-import 'package:lunarabi/features/payments/iap_purchase_service.dart';
 import 'package:lunarabi/features/payments/payment_backend_client.dart';
 import 'package:lunarabi/features/payments/payment_sheet.dart';
 
@@ -11,13 +10,11 @@ import 'package:lunarabi/features/payments/payment_sheet.dart';
 class PaymentCoordinator {
   PaymentCoordinator({
     required this.backend,
-    required this.iap,
     required this.gmo,
     required this.config,
   });
 
   final PaymentBackendClient backend;
-  final IapPurchaseService iap;
   final GmoLinkPayment gmo;
   final AppConfig config;
 
@@ -43,9 +40,9 @@ class PaymentCoordinator {
     final products = await backend.listProducts();
     if (!context.mounted) return;
     if (products.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('購入できる商品がありません')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('購入できる商品がありません')));
       return;
     }
 
@@ -54,33 +51,21 @@ class PaymentCoordinator {
     if (method == null || !context.mounted) return;
 
     switch (method) {
-      case PaymentMethod.storeIap:
-        final status = await iap.buy(product: product, backend: backend);
-        if (!context.mounted) return;
-        if (status == PaymentStatus.success) {
-          await navigator.openDeepLink(
-            config.webBaseUrl.replace(path: '/pay/done'),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('購入を完了できませんでした')),
-          );
-        }
       case PaymentMethod.gmoLink:
         try {
           final launched = await gmo.startCheckout(productId: product.id);
           if (!launched && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('決済ページを開けませんでした')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('決済ページを開けませんでした')));
           }
         } catch (error, stack) {
           debugPrint('PaymentCoordinator: GMO start failed $error');
           debugPrint('$stack');
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('決済を開始できませんでした')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('決済を開始できませんでした')));
           }
         }
       case PaymentMethod.aozoraTransfer:
@@ -103,9 +88,9 @@ class PaymentCoordinator {
           debugPrint('PaymentCoordinator: Aozora start failed $error');
           debugPrint('$stack');
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('振込案内を開始できませんでした')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('振込案内を開始できませんでした')));
           }
         }
     }

@@ -103,6 +103,25 @@ void main() {
     expect(emitted.single.payload['token'], 'fcm-1');
   });
 
+  test('registered iap handler receives iap messages only', () async {
+    BridgeMessage? handled;
+    host.registerHandler('iap.', (message) async {
+      handled = message;
+    });
+
+    await host.handleFromJs(
+      '{"type":"iap.start","requestId":"iap-1","payload":{"productId":"lunarabi.credit.100"}}',
+    );
+    await host.handleFromJs(
+      '{"type":"nav.setVisible","payload":{"visible":false}}',
+    );
+
+    expect(handled?.type, BridgeTypes.iapStart);
+    expect(handled?.requestId, 'iap-1');
+    expect(nav.visible, isFalse);
+    expect(emitted, isEmpty);
+  });
+
   test('notifyPushToken は token と platform を push.setToken で出す', () async {
     await host.notifyPushToken('fcm-abc', platform: 'android');
     expect(push.token, 'fcm-abc');

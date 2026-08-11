@@ -85,7 +85,7 @@ bash tool/forbid_firebase_options.sh
 
 対応 type 例: `nav.setVisible` / `nav.setBadge` / `nav.setActive` /
 `nav.tabSelected` / `auth.setBearerToken` / `auth.clearBearerToken` /
-`auth.getStoredToken` / `push.*`
+`auth.getStoredToken` / `push.*` / `iap.*`
 
 `webBaseUrl` と同じ origin（scheme / host / port）で読み込み完了したページだけ full bridge bootstrap と
 `bridge.ready` を受け取る。`deepLinkHost` など、WebView 内遷移を許可するが trusted ではないページでは
@@ -116,6 +116,7 @@ Flutter 側のテストだけでは、Web の CSP や token 保持方針は完�
 | Web が `push.setToken` の FCM token を登録 API に送る | manual/staging trace または code review link + owner/date/signOff |
 | Web が `bridge.ready` 後に `auth.getStoredToken` を呼ぶ | manual/staging trace + owner/date/signOff |
 | logout / 401 で Web が `auth.clearBearerToken` を呼ぶ | manual/staging trace + owner/date/signOff |
+| Web verify API が IAP receipt を検証し、`iap.confirmResult` を返す | API trace + backend allowlist review + owner/date/signOff |
 
 ## WebView の戻る操作
 
@@ -156,12 +157,14 @@ fvm flutter test
 
 ## 決済（都度課金）
 
-都度課金の coordinator / backend / IAP / GMO / 振込コードは後続の IAP bridge ブランチ用に残す。
-商品 ID は **`lunarabi.credit.100`（consumable）**。現時点の Shell には AppBar「購入」アクションを置かない。
+都度課金の Store IAP は Web から `iap.start` で開始し、Flutter は Store receipt を
+`iap.purchaseUpdated` で Web に渡す。Web verify API が receipt と product allowlist を検証し、
+`iap.confirmResult` を返した後だけ Flutter が `completePurchase` する。
+商品 ID は **`lunarabi.credit.100`（consumable）**。ネイティブ側の allowlist もこの ID のみに固定する。
 
 | 手段 | 挙動 |
 |---|---|
-| ストアで購入 | `in_app_purchase` の consumable。成功後 `confirmIap` → `completePurchase` → `/pay/done` |
+| ストアで購入 | Web bridge 経由のみ。`autoConsume:false` で開始し、Web verify API の `ok:true` 後に native complete |
 | クレジットカード (GMO) | 外部ブラウザで checkout。完了 DL: `https://app.lunarabi.example/pay/gmo/complete?paymentId=...` |
 | 銀行振込 (あおぞら) | 口座表示。「入金を確認」押下ごとに API 1 回（自動ポーリングなし） |
 
@@ -171,7 +174,8 @@ fvm flutter test
 - **復元 UI は置かない**（consumable のため）
 - サンドボックス: iOS は Sandbox アカウント、Android はライセンステスター
 - PSP 秘密鍵・GMO ショップ認証情報はアプリに入れない（バックエンドのみ）
-- 現状の `AppServices.paymentBackend` は debug/profile では **Fake**、release では **FailClosed**（confirm / session 作成は `StateError`、商品一覧は空）。本番前に実 API クライアントへ差し替えること
+- IAP の complete / consume は native 単独で行わない。durable pending record と live Store transaction が一致し、Web verify API から matching `ok:true` が返った場合だけ完了する
+- 現状の `AppServices.paymentBackend` は debug/profile では **Fake**、release では **FailClosed**（GMO / 銀行振込の session 作成は `StateError`、商品一覧は空）。本番前に実 API クライアントへ差し替えること
 
 ### iOS ガイドライン
 

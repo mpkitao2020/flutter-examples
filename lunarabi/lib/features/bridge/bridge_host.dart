@@ -11,6 +11,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 typedef BridgeEmitter = Future<void> Function(BridgeMessage message);
 typedef BridgeBootstrapGuard = bool Function();
 typedef BridgeReadyCallback = FutureOr<void> Function();
+typedef BridgeMessageHandler = FutureOr<void> Function(BridgeMessage message);
 
 /// Bidirectional bridge between WebView JS and Flutter.
 class BridgeHost {
@@ -36,6 +37,7 @@ class BridgeHost {
   Uri _webBaseUrl;
 
   final _readyListeners = <BridgeReadyCallback>[];
+  final _handlers = <String, BridgeMessageHandler>{};
   BridgeEmitter? _emitter;
   WebViewController? _controller;
   var _channelEnsured = false;
@@ -57,6 +59,10 @@ class BridgeHost {
 
   void removeReadyListener(BridgeReadyCallback listener) {
     _readyListeners.remove(listener);
+  }
+
+  void registerHandler(String typePrefix, BridgeMessageHandler handler) {
+    _handlers[typePrefix] = handler;
   }
 
   void updateTrustedOrigin({
@@ -148,6 +154,12 @@ class BridgeHost {
   }
 
   Future<void> _dispatch(BridgeMessage message) async {
+    final handler = _handlerFor(message.type);
+    if (handler != null) {
+      await handler(message);
+      return;
+    }
+
     switch (message.type) {
       case BridgeTypes.navSetVisible:
         final visible = message.payload['visible'];
@@ -211,6 +223,15 @@ class BridgeHost {
       default:
         await _respondError(message, 'unknown_type');
     }
+  }
+
+  BridgeMessageHandler? _handlerFor(String type) {
+    for (final entry in _handlers.entries) {
+      if (type.startsWith(entry.key)) {
+        return entry.value;
+      }
+    }
+    return null;
   }
 
   Future<void> notifyTabSelected(NavTabId id) {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -37,7 +39,7 @@ class LunarabiApp extends StatefulWidget {
   State<LunarabiApp> createState() => _LunarabiAppState();
 }
 
-class _LunarabiAppState extends State<LunarabiApp> {
+class _LunarabiAppState extends State<LunarabiApp> with WidgetsBindingObserver {
   late AppConfig _config = widget.config;
   DeepLinkListener? _deepLinkListener;
   PushService? _pushService;
@@ -45,6 +47,12 @@ class _LunarabiAppState extends State<LunarabiApp> {
   final _gmoLifecycle = GmoCompleterLifecycle();
   var _pushStarted = false;
   var _coldStartLinkHandled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   void _switchFlavor(Flavor flavor) {
     _payments = null;
@@ -69,7 +77,6 @@ class _LunarabiAppState extends State<LunarabiApp> {
     _gmoLifecycle.rebind(gmo);
     final coordinator = PaymentCoordinator(
       backend: AppServices.paymentBackend,
-      iap: AppServices.iapPurchaseService,
       gmo: gmo,
       config: _config,
     );
@@ -118,7 +125,18 @@ class _LunarabiAppState extends State<LunarabiApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final controller = AppServices.iapBridgeController;
+      if (controller != null) {
+        unawaited(controller.onAppResumed());
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _deepLinkListener?.dispose();
     _pushService?.dispose();
     _gmoLifecycle.clear();
