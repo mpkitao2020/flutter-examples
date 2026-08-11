@@ -25,7 +25,7 @@
 - Laravel 本体
 - SPA untrusted-frame / CSP policy for JS bridge
 - Web: auth restore UX, FCM register API, IAP verify API
-- Production APNs entitlements if not config-switched in branch 5
+- Production APNs / Firebase delivery validation with evidence, owner, date, and signOff
 
 ## Execution order
 

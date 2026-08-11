@@ -116,19 +116,34 @@ committed main-frame URL が trusted origin でない場合 `forbidden_origin` �
 | Android | RSA OAEP + AES-GCM（API 23+; Flutter minSdk 24） | 不要（v10 以降 EncryptedSharedPreferences 非推奨） |
 | iOS | Keychain | 不要（App Groups 未使用） |
 
-### 外部 release gate（Web / DevOps）
+## 本番 hardening checklist
 
-Flutter 側のテストだけでは、Web の CSP や token 保持方針は完了扱いにしない。各 gate は
-`evidence` / `owner` / `date` / `signOff` を記録して閉じる。
+Flutter テストで閉じられるのは Flutter branch deliverables だけ。External release gates は、各行の
+`evidence` / `owner` / `date` / `signOff` を埋めるまで本番完了にしない。
 
-| Gate | acceptance artifact |
-|---|---|
-| SPA が untrusted iframe から native channel に到達できない | CSP header dump または frame policy snippet + owner/date/signOff |
-| Web が token を memory-only で保持し、localStorage に保存しない | manual steps または code review link + owner/date/signOff |
-| Web が `push.setToken` の FCM token を登録 API に送る | manual/staging trace または code review link + owner/date/signOff |
-| Web が `bridge.ready` 後に `auth.getStoredToken` を呼ぶ | manual/staging trace + owner/date/signOff |
-| logout / 401 で Web が `auth.clearBearerToken` を呼ぶ | manual/staging trace + owner/date/signOff |
-| Web verify API が IAP receipt を検証し、`iap.confirmResult` を返す | API trace + backend allowlist review + owner/date/signOff |
+### Flutter branch deliverables（code）
+
+| Done | Deliverable | Acceptance artifact |
+|---|---|---|
+| [ ] | HostGuard WebView + bridge reinject + committed URL | `test/features/webview/` と `test/features/bridge/` の対象テスト結果 |
+| [ ] | Secure auth + trusted origin | `secure_auth_token_store_test.dart` / `bridge_host_auth_test.dart` / trusted-origin review |
+| [ ] | FCM → Web | `push_service_test.dart` と Web へ渡す bridge contract の確認 |
+| [ ] | IAP bridge + gated complete + durable recovery | `test/features/payments/` の IAP / pending / complete 系テスト結果 |
+| [ ] | Nav SVG + entitlements attached | `branding_assets_test.dart` / `bottom_nav_bar_test.dart` / `runner_push_configuration_test.dart` |
+
+### External release gates（Flutter tests では閉じない）
+
+| Gate | evidence | owner | date | signOff |
+|---|---|---|---|---|
+| Firebase placeholders を実ファイルへ差し替え | dev/stg/prod の Firebase console project ID と `GoogleService-Info.plist` / `google-services.json` の置換記録 |  |  |  |
+| Real domains + AASA / assetlinks | `https://<domain>/.well-known/apple-app-site-association` と `assetlinks.json` の取得ログ |  |  |  |
+| Release signing | Xcode archive signing summary、provisioning profile ID、Android release keystore fingerprint |  |  |  |
+| SPA frame / CSP policy for bridge | CSP snippet または response header dump。untrusted iframe が native channel に触れないこと |  |  |  |
+| Web auth restore | `bridge.ready` 後の `auth.getStoredToken` 呼び出しと logout / 401 の `auth.clearBearerToken` staging log |  |  |  |
+| Web FCM register API | `push.setToken` の endpoint name、request sample、staging trace |  |  |  |
+| Web IAP verify bridge | receipt verify endpoint name、`iap.confirmResult` staging log、backend product allowlist review |  |  |  |
+| Production `aps-environment` | Release archive entitlements dump。`Runner.Release.entitlements` は `production` だが、実 APNs / Firebase delivery は別 evidence で確認する |  |  |  |
+| Japan external payment compliance | GMO / あおぞら表示、審査方針、App Review 回答案の承認記録 |  |  |  |
 
 ## WebView の戻る操作
 
