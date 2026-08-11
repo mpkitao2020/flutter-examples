@@ -26,8 +26,7 @@ class DeepLinkBus {
         onError: listener.addError,
         onDone: listener.close,
       );
-      listener
-        ..onCancel = () async {
+      listener.onCancel = () async {
           await sub.cancel();
         };
     });

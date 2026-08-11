@@ -13,12 +13,10 @@ class DeepLinkListener {
     required this.guard,
     required this.bus,
     required this.navigator,
-    InitialLinkGetter? getInitialLink,
-    Stream<Uri>? uriLinkStream,
-    AppLinks? appLinks,
-  })  : _getInitialLink = getInitialLink,
-        _uriLinkStream = uriLinkStream,
-        _appLinks = appLinks;
+    this._getInitialLink,
+    this._uriLinkStream,
+    this._appLinks,
+  });
 
   final HostGuard guard;
   final DeepLinkBus bus;
@@ -54,7 +52,7 @@ class DeepLinkListener {
   }
 
   Future<Uri?> _resolveInitial() async {
-    if (_getInitialLink != null) return _getInitialLink!();
+    if (_getInitialLink != null) return _getInitialLink();
     return _appLinks?.getInitialLink();
   }
 
