@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,6 +7,7 @@ import 'package:lunarabi/core/app_services.dart';
 import 'package:lunarabi/core/env/app_config.dart';
 import 'package:lunarabi/core/navigation/app_navigator.dart';
 import 'package:lunarabi/features/deeplink/deep_link_listener.dart';
+import 'package:lunarabi/features/payments/gmo_completer_lifecycle.dart';
 import 'package:lunarabi/features/payments/gmo_link_payment.dart';
 import 'package:lunarabi/features/payments/payment_coordinator.dart';
 import 'package:lunarabi/features/push/notification_link_parser.dart';
@@ -44,16 +43,14 @@ class _LunarabiAppState extends State<LunarabiApp> {
   late AppConfig _config = widget.config;
   DeepLinkListener? _deepLinkListener;
   PushService? _pushService;
-  GmoLinkPayment? _gmo;
   PaymentCoordinator? _payments;
+  final _gmoLifecycle = GmoCompleterLifecycle();
   var _pushStarted = false;
 
   void _switchFlavor(Flavor flavor) {
-    // Synchronously drop the old completer reference after requesting dispose.
-    final previous = _gmo;
-    _gmo = null;
     _payments = null;
-    unawaited(previous?.dispose() ?? Future<void>.value());
+    // Queue clear on the same chain so a later rebind cannot overlap.
+    _gmoLifecycle.clear();
     setState(() => _config = _config.copyWithFlavor(flavor));
   }
 
@@ -62,21 +59,14 @@ class _LunarabiAppState extends State<LunarabiApp> {
     if (existing != null && identical(existing.config, _config)) {
       return existing;
     }
-    final previous = _gmo;
-    _gmo = null;
     final gmo = GmoLinkPayment(
       backend: AppServices.paymentBackend,
       bus: AppServices.deepLinkBus,
       navigator: navigator,
       config: _config,
     );
-    _gmo = gmo;
-    // Serialize dispose → attach so two GMO listeners never overlap.
-    unawaited(() async {
-      await previous?.dispose();
-      if (!identical(_gmo, gmo)) return;
-      await gmo.attachCompleter();
-    }());
+    // Serialized dispose → attach (await via [_gmoLifecycle.ready]).
+    _gmoLifecycle.rebind(gmo);
     final coordinator = PaymentCoordinator(
       backend: AppServices.paymentBackend,
       iap: AppServices.iapPurchaseService,
@@ -101,8 +91,8 @@ class _LunarabiAppState extends State<LunarabiApp> {
     _deepLinkListener = listener;
     await listener.start();
 
-    final payments = _ensurePayments(navigator);
-    await payments.gmo.attachCompleter();
+    _ensurePayments(navigator);
+    await _gmoLifecycle.ready;
 
     if (!_pushStarted) {
       _pushStarted = true;
@@ -123,7 +113,7 @@ class _LunarabiAppState extends State<LunarabiApp> {
   @override
   void dispose() {
     _deepLinkListener?.dispose();
-    _gmo?.dispose();
+    _gmoLifecycle.clear();
     super.dispose();
   }
 
@@ -141,6 +131,8 @@ class _LunarabiAppState extends State<LunarabiApp> {
         bridgeHost: AppServices.bridgeHost,
         onPurchasePressed: (context, navigator) async {
           final payments = _ensurePayments(navigator);
+          await _gmoLifecycle.ready;
+          if (!context.mounted) return;
           await payments.openPurchase(context, navigator: navigator);
         },
       ),

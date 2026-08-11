@@ -125,7 +125,7 @@ class HandledIdSet {
 
 ## Self-review checklist
 
-- [ ] GMO listener が同時に 2 本立たない
-- [ ] release で Fake confirm no-op にならない
-- [ ] handled set が無制限に増えない
-- [ ] `fvm flutter analyze` / `fvm flutter test` green
+- [x] GMO listener が同時に 2 本立たない
+- [x] release で Fake confirm no-op にならない
+- [x] handled set が無制限に増えない
+- [x] `fvm flutter analyze` / `fvm flutter test` green

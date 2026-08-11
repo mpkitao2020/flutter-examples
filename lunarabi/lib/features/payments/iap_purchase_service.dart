@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:lunarabi/features/payments/handled_id_set.dart';
 import 'package:lunarabi/features/payments/payment_backend_client.dart';
 
 /// Testable surface over [InAppPurchase].
@@ -57,7 +58,7 @@ class IapPurchaseService {
   /// Caps how long [buy] waits for a terminal purchase event.
   final Duration buyTimeout;
 
-  final Set<String> _handledPurchaseKeys = {};
+  final HandledIdSet _handledPurchaseKeys = HandledIdSet();
 
   String _key(PurchaseDetails purchase) {
     return purchase.purchaseID ??

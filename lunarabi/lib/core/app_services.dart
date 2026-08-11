@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
 import 'package:lunarabi/features/bridge/bridge_host.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
@@ -18,8 +19,12 @@ class AppServices {
     auth: authTokenStore,
     push: pushTokenStore,
   );
-  /// Scaffold default. Replace with a real HTTP client before production release.
-  /// Fake confirms are no-ops; UI may still navigate to `/pay/done`.
-  static final PaymentBackendClient paymentBackend = FakePaymentBackendClient();
+
+  /// Fake in debug/profile for local flows; fail-closed in release until a
+  /// real HTTP [PaymentBackendClient] is injected.
+  static final PaymentBackendClient paymentBackend = kReleaseMode
+      ? FailClosedPaymentBackendClient()
+      : FakePaymentBackendClient();
+
   static final iapPurchaseService = IapPurchaseService();
 }

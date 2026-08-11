@@ -5,6 +5,7 @@ import 'package:lunarabi/core/env/app_config.dart';
 import 'package:lunarabi/core/navigation/app_navigator.dart';
 import 'package:lunarabi/features/deeplink/deep_link_bus.dart';
 import 'package:lunarabi/features/deeplink/deep_link_parser.dart';
+import 'package:lunarabi/features/payments/handled_id_set.dart';
 import 'package:lunarabi/features/payments/payment_backend_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -25,7 +26,7 @@ class GmoLinkPayment {
 
   StreamSubscription<ParsedDeepLink>? _sub;
   var _attached = false;
-  final Set<String> _handledPaymentIds = {};
+  final HandledIdSet _handledPaymentIds = HandledIdSet();
 
   Future<void> attachCompleter() async {
     if (_attached) return;

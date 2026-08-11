@@ -39,6 +39,18 @@ class _ScriptedBackend extends FakePaymentBackendClient {
   }
 }
 
+class _ThrowingNavigator implements AppNavigator {
+  @override
+  Future<void> openDeepLink(Uri uri) async {
+    throw StateError('navigate failed');
+  }
+
+  @override
+  Future<void> openFromNotification(Uri uri) async {
+    throw StateError('navigate failed');
+  }
+}
+
 void main() {
   final session = AozoraTransferSession(
     paymentId: 'aozora-1',
@@ -50,7 +62,7 @@ void main() {
   Future<void> pumpPage(
     WidgetTester tester, {
     required PaymentBackendClient backend,
-    required _FakeNavigator navigator,
+    required AppNavigator navigator,
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -103,5 +115,25 @@ void main() {
     expect(backend.calls, 1);
     expect(navigator.opened, isEmpty);
     expect(find.text('入金確認に失敗しました'), findsOneWidget);
+  });
+
+  testWidgets('openDeepLink 失敗で busy 解除とエラー表示', (tester) async {
+    final backend = _ScriptedBackend([PaymentStatus.success]);
+    await pumpPage(
+      tester,
+      backend: backend,
+      navigator: _ThrowingNavigator(),
+    );
+
+    await tester.tap(find.byKey(const Key('aozora-confirm-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('完了画面を開けませんでした'), findsOneWidget);
+    // ボタンが再び押せる（_busy 解除）
+    expect(
+      tester.widget<FilledButton>(find.byKey(const Key('aozora-confirm-button'))).onPressed,
+      isNotNull,
+    );
   });
 }

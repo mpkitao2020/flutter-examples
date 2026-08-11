@@ -69,3 +69,42 @@ class FakePaymentBackendClient implements PaymentBackendClient {
     return n >= 2 ? PaymentStatus.success : PaymentStatus.pending;
   }
 }
+
+/// Release default until a real HTTP client is wired.
+///
+/// Products are empty so the purchase sheet has nothing to sell; mutating
+/// calls throw so a misconfigured release build cannot fake success.
+class FailClosedPaymentBackendClient implements PaymentBackendClient {
+  static const _message = 'PaymentBackendClient not configured';
+
+  Never _fail() => throw StateError(_message);
+
+  @override
+  Future<List<ProductRef>> listProducts() async => const [];
+
+  @override
+  Future<void> confirmIap({
+    required String productId,
+    required String verificationData,
+    required String source,
+  }) async =>
+      _fail();
+
+  @override
+  Future<GmoLinkSession> createGmoLink({required String productId}) async =>
+      _fail();
+
+  @override
+  Future<void> confirmGmo({required String paymentId}) async => _fail();
+
+  @override
+  Future<AozoraTransferSession> createAozoraTransfer({
+    required String productId,
+  }) async =>
+      _fail();
+
+  @override
+  Future<PaymentStatus> checkBankTransfer({required String paymentId}) async {
+    return PaymentStatus.failure;
+  }
+}
