@@ -351,3 +351,7 @@ build/
 
 **/flutter_export_environment.sh
 **/.dart_tool
+
+# Keep Lunarabi build documentation tracked
+!docs/superpowers/build/
+!docs/superpowers/build/**
