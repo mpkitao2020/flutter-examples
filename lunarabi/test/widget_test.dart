@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarabi/core/env/app_config.dart';
-import 'package:lunarabi/main.dart';
 
 void main() {
-  testWidgets('shows web base URL from config', (tester) async {
+  // WebView は Platform View のため CI 上の widget test で pump しにくい。
+  // シェル結合は HostGuard 単体と手動実機確認に寄せる。
+  test('dev config remains the default smoke check', () {
     final config = AppConfig.fromFlavor(Flavor.dev);
-    await tester.pumpWidget(LunarabiApp(config: config));
-    expect(find.text('https://dev.lunarabi.example'), findsOneWidget);
+    expect(config.webBaseUrl.host, 'dev.lunarabi.example');
   });
 }

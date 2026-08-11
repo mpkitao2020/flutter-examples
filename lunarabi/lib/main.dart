@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarabi/core/env/app_config.dart';
+import 'package:lunarabi/features/webview/webview_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,45 +33,9 @@ class _LunarabiAppState extends State<LunarabiApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Lunarabi',
-      home: _PlaceholderHome(
+      home: WebViewShell(
         config: _config,
         onSwitchFlavor: kReleaseMode ? null : _switchFlavor,
-      ),
-    );
-  }
-}
-
-/// Temporary home until the WebView shell lands in the next task.
-class _PlaceholderHome extends StatelessWidget {
-  const _PlaceholderHome({
-    required this.config,
-    required this.onSwitchFlavor,
-  });
-
-  final AppConfig config;
-  final ValueChanged<Flavor>? onSwitchFlavor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Lunarabi (${config.flavor.name})'),
-        actions: [
-          if (onSwitchFlavor != null)
-            PopupMenuButton<Flavor>(
-              onSelected: onSwitchFlavor,
-              itemBuilder: (context) => [
-                for (final flavor in Flavor.values)
-                  PopupMenuItem(
-                    value: flavor,
-                    child: Text(flavor.name),
-                  ),
-              ],
-            ),
-        ],
-      ),
-      body: Center(
-        child: Text(config.webBaseUrl.toString()),
       ),
     );
   }
