@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_controller.dart';
+
+const bottomNavIconAssetPaths = <NavTabId, String>{
+  NavTabId.home: 'branding/nav/home.svg',
+  NavTabId.search: 'branding/nav/search.svg',
+  NavTabId.notify: 'branding/nav/notify.svg',
+  NavTabId.account: 'branding/nav/account.svg',
+};
 
 class LunarabiBottomNavBar extends StatelessWidget {
   const LunarabiBottomNavBar({
@@ -31,11 +39,11 @@ class LunarabiBottomNavBar extends StatelessWidget {
             for (final id in NavTabId.values)
               NavigationDestination(
                 icon: _BadgeIcon(
-                  icon: _iconFor(id),
+                  assetPath: bottomNavIconAssetPaths[id]!,
                   count: controller.badgeOf(id),
                 ),
                 selectedIcon: _BadgeIcon(
-                  icon: _selectedIconFor(id),
+                  assetPath: bottomNavIconAssetPaths[id]!,
                   count: controller.badgeOf(id),
                 ),
                 label: _labelFor(id),
@@ -44,24 +52,6 @@ class LunarabiBottomNavBar extends StatelessWidget {
         );
       },
     );
-  }
-
-  static IconData _iconFor(NavTabId id) {
-    return switch (id) {
-      NavTabId.home => Icons.home_outlined,
-      NavTabId.search => Icons.search,
-      NavTabId.notify => Icons.notifications_outlined,
-      NavTabId.account => Icons.person_outline,
-    };
-  }
-
-  static IconData _selectedIconFor(NavTabId id) {
-    return switch (id) {
-      NavTabId.home => Icons.home,
-      NavTabId.search => Icons.search,
-      NavTabId.notify => Icons.notifications,
-      NavTabId.account => Icons.person,
-    };
   }
 
   static String _labelFor(NavTabId id) {
@@ -75,20 +65,28 @@ class LunarabiBottomNavBar extends StatelessWidget {
 }
 
 class _BadgeIcon extends StatelessWidget {
-  const _BadgeIcon({required this.icon, required this.count});
+  const _BadgeIcon({required this.assetPath, required this.count});
 
-  final IconData icon;
+  final String assetPath;
   final int count;
 
   @override
   Widget build(BuildContext context) {
+    final iconTheme = IconTheme.of(context);
+    final color = iconTheme.color;
+    final icon = SvgPicture.asset(
+      assetPath,
+      width: iconTheme.size ?? 24,
+      height: iconTheme.size ?? 24,
+      colorFilter: color == null
+          ? null
+          : ColorFilter.mode(color, BlendMode.srcIn),
+    );
+
     if (count <= 0) {
-      return Icon(icon);
+      return icon;
     }
     final label = count > 99 ? '99+' : '$count';
-    return Badge(
-      label: Text(label),
-      child: Icon(icon),
-    );
+    return Badge(label: Text(label), child: icon);
   }
 }
