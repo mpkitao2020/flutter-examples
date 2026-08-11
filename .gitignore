@@ -266,7 +266,6 @@ xcuserdata/
 
 # CocoaPods - Refactored to standalone file
 
-
 # Carthage - Refactored to standalone file
 
 # fastlane
@@ -325,7 +324,6 @@ playground.xcworkspace
 # For more information about the recommended setup visit:
 # https://docs.fastlane.tools/best-practices/source-control/#source-control
 
-
 ### Xcode ###
 # Xcode
 #
@@ -351,3 +349,9 @@ build/
 
 **/flutter_export_environment.sh
 **/.dart_tool
+
+# FVM Version Cache
+.fvm/
+
+# FVM Version Cache
+.fvm/
