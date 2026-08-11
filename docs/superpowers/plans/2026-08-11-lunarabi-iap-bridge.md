@@ -103,11 +103,12 @@ Behavior:
 2. Begin buy with `autoConsume: false`
 3. On store purchased: compute purchaseKey; persist pending (`waitingConfirm: true`); emit purchaseUpdated **only if trusted**; wait for matching confirmResult (timeout e.g. 2 min)
 4. ok true + live PurchaseDetails matched by purchaseKey → completePurchase exactly once → remove pending → finished completed
-5. ok false / timeout → **do not** completePurchase / consume; keep pending; finished failed
+5. ok false → **do not** completePurchase / consume; keep pending with `waitingConfirm: true`; finished failed
+5b. timeout → emit finished failed; set pending to `waitingConfirm: false` with status timed_out (still durable for Store recovery / manual re-verify path); **late ok after timeout is rejected** (bridge error) until a new purchaseUpdated cycle re-arms waitingConfirm
 6. canceled/error → finished canceled/failed without waiting confirm; no complete
-7. confirmResult rules: duplicate ok after complete → error; stale/unknown key → error never complete; confirm before waiting → error; late ok after timeout only if still `waitingConfirm` + live tx
+7. confirmResult rules: duplicate ok after complete → error; stale/unknown key → error never complete; confirm before waiting → error; late ok after timeout (**waitingConfirm false**) → error
 8. Rehydration: if durable pending exists without live Store tx, re-emit for Web but delay complete until Store re-emits matching tx
-9. Tests assert fake store: zero complete/consume before ok:true; unknown product never buyConsumable; deepLinkHost cannot start/confirm or receive receipt events
+9. Tests assert fake store: zero complete/consume before ok:true; unknown product never buyConsumable; deepLinkHost cannot start/confirm or receive receipt events; late ok after timeout never completes
 
 - [ ] **Step 1: Failing tests** happy path, cancel, confirm false, timeout, unknown product, no-complete-before-ok, duplicate/stale/unknown confirm, deepLinkHost forbidden, rehydrate-without-live-tx-no-complete
 - [ ] **Step 2: Implement store flag + pending store + controller**

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Sanctum Bearer token を Flutter Secure Storage に保存し、**trusted bridge origin**（`webBaseUrl.host` のみ）からのみ復元可能にする。
+**Goal:** Sanctum Bearer token を Flutter Secure Storage に保存し、**TrustedBridgeOrigin**（`webBaseUrl` の scheme+host+effective port）からのみ復元・更新可能にする。
 
 **Architecture:** `SecureAuthTokenStore` wraps `flutter_secure_storage`. Bridge exposes set/clear/getStoredToken. Arbitrary `auth.getBearerToken` is removed or always errors. Token returned only when **committed main-frame URL** (from branch 1) is a trusted bridge origin — **not** merely HostGuard-allowed / `deepLinkHost`.
 

@@ -95,9 +95,8 @@ bool isTrustedBridgeOrigin(Uri? committed, Uri webBaseUrl) {
   if (committed == null) return false;
   if (committed.scheme != webBaseUrl.scheme) return false;
   if (committed.host != webBaseUrl.host) return false;
-  return committed.hasPort == webBaseUrl.hasPort
-      ? committed.port == webBaseUrl.port
-      : committed.port == webBaseUrl.port; // compare effective ports
+  // Uri.port is the effective port (defaults 80/443 when omitted).
+  return committed.port == webBaseUrl.port;
 }
 ```
 
@@ -427,9 +426,9 @@ Each gate needs an **acceptance artifact** in the final checklist (not just a la
 
 ## Success criteria
 
-- Untrusted origins cannot stay in WebView; stored token readable only from trusted bridge origin (`webBaseUrl`)
+- Non-allowed origins cannot stay in WebView as top-level pages; privileged bridge (auth set/clear/get, push token, IAP start/confirm/receipts) only on TrustedBridgeOrigin (`deepLinkHost` may navigate in-app but is not bridge-trusted unless identical origin)
 - Cold start restores Sanctum token only under that gate
-- FCM token reaches Web without native backend register; ready replay owned by PushService
-- Web can start IAP with allowlisted productId; no complete/consume before verify ok; durable recovery across process death and Web reload
+- FCM token reaches Web without native backend register; ready replay owned by PushService and trusted-only
+- Web can start IAP with allowlisted productId; no complete/consume before verify ok + live Store tx; durable recovery across process death and Web reload
 - Nav uses swappable SVG placeholders with asset registration tests
-- iOS entitlements are attached to the Runner target; production APNs status is honest in the checklist
+- iOS entitlements are attached to the Runner target (Debug/Profile/Release); production APNs status is honest in the checklist

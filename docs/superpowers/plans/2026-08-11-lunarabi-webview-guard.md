@@ -96,12 +96,14 @@ Rules:
 - Call `ensureChannel` before first `loadRequest`
 - On trusted `onPageFinished`: reinject full bootstrap + `bridge.ready`
 - On non-trusted allowed finish (`deepLinkHost` only): **no** full bootstrap / **no** `bridge.ready` (or reduced nav-only stub — document choice in README)
+- Native handlers must still reject privileged messages when committed URL is non-trusted — later-branch tests must simulate **raw channel** messages (not only missing JS facade). This branch: unit-test `isTrustedBridgeOrigin` false + shell skips injectBootstrap
 - Remove `_bridgeAttached` early-return that blocks reinject
 
 - [ ] **Step 1: Test** injectBootstrap twice on trusted pages without second addJavaScriptChannel; two bridge.ready
 - [ ] **Step 2: Test** non-trusted allowed page finish does not emit bridge.ready / does not expose privileged bridge
-- [ ] **Step 3: Implement**
-- [ ] **Step 4: Commit** `fix(lunarabi): reinject bridge bootstrap on each trusted page`
+- [ ] **Step 3: Test** `isTrustedBridgeOrigin` rejects deepLinkHost and same-host different-port
+- [ ] **Step 4: Implement**
+- [ ] **Step 5: Commit** `fix(lunarabi): reinject bridge bootstrap on each trusted page`
 
 ---
 
