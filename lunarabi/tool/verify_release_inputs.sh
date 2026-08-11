@@ -79,14 +79,25 @@ check_native_hosts() {
 check_android_signing() {
   local props="$ROOT/android/keystore.properties"
   local missing=()
+  local store_file="${LUNARABI_ANDROID_STORE_FILE:-$(read_property "$props" storeFile)}"
 
-  [[ -n "${LUNARABI_ANDROID_STORE_FILE:-}" || -n "$(read_property "$props" storeFile)" ]] || missing+=("LUNARABI_ANDROID_STORE_FILE/storeFile")
+  [[ -n "$store_file" ]] || missing+=("LUNARABI_ANDROID_STORE_FILE/storeFile")
   [[ -n "${LUNARABI_ANDROID_STORE_PASSWORD:-}" || -n "$(read_property "$props" storePassword)" ]] || missing+=("LUNARABI_ANDROID_STORE_PASSWORD/storePassword")
   [[ -n "${LUNARABI_ANDROID_KEY_ALIAS:-}" || -n "$(read_property "$props" keyAlias)" ]] || missing+=("LUNARABI_ANDROID_KEY_ALIAS/keyAlias")
   [[ -n "${LUNARABI_ANDROID_KEY_PASSWORD:-}" || -n "$(read_property "$props" keyPassword)" ]] || missing+=("LUNARABI_ANDROID_KEY_PASSWORD/keyPassword")
 
   if [[ "${#missing[@]}" -ne 0 ]]; then
     add_error "Android release signing inputs are missing: ${missing[*]}"
+  fi
+
+  if [[ -n "$store_file" ]]; then
+    local resolved_store_file="$store_file"
+    if [[ "$resolved_store_file" != /* ]]; then
+      resolved_store_file="$ROOT/android/app/$resolved_store_file"
+    fi
+    if [[ ! -r "$resolved_store_file" ]]; then
+      add_error "Android release signing store file is not readable: $store_file"
+    fi
   fi
 }
 
@@ -105,6 +116,10 @@ fi
 
 if ! "$ROOT/tool/forbid_release_placeholders.sh"; then
   add_error "production Firebase files still contain placeholders"
+fi
+
+if ! "$ROOT/tool/forbid_firebase_options.sh"; then
+  add_error "Dart FirebaseOptions usage is forbidden in release builds"
 fi
 
 check_native_hosts

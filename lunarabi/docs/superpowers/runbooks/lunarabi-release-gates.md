@@ -70,34 +70,37 @@ Update `docs/evidence/release_gates.manifest.json` after each external gate is
 verified. Each gate needs:
 
 - `status: "closed"`
-- a specific evidence pointer, such as a URL, file path, command log, or ticket
-- an owner
-- a date
-- a sign-off string
+- `evidence` pointing at an existing file under `docs/evidence/artifacts/`
+- `owner` with at least 3 characters
+- `date` in `YYYY-MM-DD` format
+- `signOff` with at least 2 characters
 
 Docs and runbooks are instructions. They are not evidence. In particular,
-docs/runbook alone does not close production gates.
+docs/runbook alone does not close production gates. Do not point `evidence` at
+runbooks, plans, specs, or markdown-only process docs.
 
-## Preflight
+## Release build preflight
 
-Run the single release preflight from the app root:
-
-```bash
-bash tool/verify_release_inputs.sh
-```
-
-The current repository still contains placeholders and open gates, so this
-command must fail until real production inputs and evidence are supplied.
-
-When every gate is closed and inputs are real, build with matching dart-defines:
+Build releases through the wrapper from the app root. It runs the single
+preflight before forwarding to `fvm flutter build`:
 
 ```bash
-fvm flutter build appbundle \
+bash tool/build_release.sh appbundle \
   --flavor prod \
   --dart-define=FLAVOR=prod \
   --dart-define=LUNARABI_WEB_BASE_URL="$LUNARABI_WEB_BASE_URL" \
   --dart-define=LUNARABI_API_BASE_URL="$LUNARABI_API_BASE_URL" \
   --dart-define=LUNARABI_DEEP_LINK_HOST="$LUNARABI_DEEP_LINK_HOST"
+```
+
+The current repository still contains placeholders and open gates, so this
+command must fail until real production inputs and evidence artifacts are
+supplied.
+
+To check without building, run the same preflight directly:
+
+```bash
+bash tool/verify_release_inputs.sh
 ```
 
 If Gradle is not available in the runner, record that as a local environment

@@ -6,8 +6,10 @@ MANIFEST="$ROOT/docs/evidence/release_gates.manifest.json"
 
 python3 - "$MANIFEST" "$ROOT" <<'PY'
 import json
+import re
 import sys
 from pathlib import Path
+from pathlib import PurePosixPath
 
 manifest = Path(sys.argv[1])
 root = Path(sys.argv[2])
@@ -33,6 +35,41 @@ if not isinstance(gates, list) or not gates:
 
 errors = []
 required = ("evidence", "owner", "date", "signOff")
+artifact_prefix = PurePosixPath("docs/evidence/artifacts")
+artifacts_root = (root / "docs/evidence/artifacts").resolve()
+date_re = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def validate_evidence(name: str, evidence: str) -> None:
+    evidence_path = PurePosixPath(evidence)
+    normalized = evidence.lower()
+
+    if "runbook" in normalized:
+        errors.append(f"{name}: evidence path must not contain runbook")
+    if evidence_path.parts[:2] == ("docs", "superpowers"):
+        errors.append(f"{name}: evidence must not point under docs/superpowers")
+    if evidence_path.suffix.lower() == ".md":
+        errors.append(f"{name}: markdown documents are not evidence artifacts")
+    if evidence_path.is_absolute() or ".." in evidence_path.parts:
+        errors.append(f"{name}: evidence must be a relative path under docs/evidence/artifacts")
+        return
+    if evidence_path.parts[:3] != artifact_prefix.parts:
+        errors.append(f"{name}: evidence must be under docs/evidence/artifacts")
+        return
+
+    artifact = (root / Path(evidence)).resolve()
+    try:
+        artifact.relative_to(artifacts_root)
+    except ValueError:
+        errors.append(f"{name}: evidence must stay under docs/evidence/artifacts")
+        return
+
+    if not artifact.is_file():
+        errors.append(f"{name}: evidence artifact does not exist: {evidence}")
+    elif artifact.stat().st_size < 32:
+        errors.append(f"{name}: evidence artifact must be at least 32 bytes: {evidence}")
+
+
 for index, gate in enumerate(gates):
     name = gate.get("name") or f"gate[{index}]"
     if gate.get("status") != "closed":
@@ -41,6 +78,18 @@ for index, gate in enumerate(gates):
         value = gate.get(key)
         if not isinstance(value, str) or not value.strip():
             errors.append(f"{name}: {key} is required")
+    evidence = gate.get("evidence")
+    if isinstance(evidence, str) and evidence.strip():
+        validate_evidence(name, evidence.strip())
+    date = gate.get("date")
+    if isinstance(date, str) and date.strip() and not date_re.match(date.strip()):
+        errors.append(f"{name}: date must match YYYY-MM-DD")
+    owner = gate.get("owner")
+    if isinstance(owner, str) and owner.strip() and len(owner.strip()) < 3:
+        errors.append(f"{name}: owner must be at least 3 characters")
+    sign_off = gate.get("signOff")
+    if isinstance(sign_off, str) and sign_off.strip() and len(sign_off.strip()) < 2:
+        errors.append(f"{name}: signOff must be at least 2 characters")
 
 if errors:
     for error in errors:

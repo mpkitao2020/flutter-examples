@@ -22,8 +22,25 @@ void main() {
         expect(gradle, contains('LUNARABI_DEEP_LINK_HOST'));
         expect(gradle, contains('app.lunarabi.example'));
         expect(gradle, contains('Release deep link host must be set'));
+        expect(
+          gradle,
+          contains('releaseDeepLinkHost.trim() != releaseDeepLinkHost'),
+        );
+        expect(gradle, contains('releaseDeepLinkHost.contains("\\\\")'));
       },
     );
+
+    test('Gradle release tasks depend on the release input verifier', () {
+      final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+
+      expect(gradle, contains('verifyLunarabiReleaseInputs'));
+      expect(gradle, contains('Exec'));
+      expect(
+        gradle,
+        contains('commandLine("bash", "tool/verify_release_inputs.sh")'),
+      );
+      expect(gradle, contains('dependsOn(verifyLunarabiReleaseInputs)'));
+    });
 
     test('Gradle release signing has no debug fallback', () {
       final gradle = File('android/app/build.gradle.kts').readAsStringSync();

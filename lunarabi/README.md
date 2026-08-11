@@ -120,8 +120,10 @@ committed main-frame URL が trusted origin でない場合 `forbidden_origin` �
 
 Flutter テストで閉じられるのは Flutter branch deliverables だけ。External release gates は
 `docs/evidence/release_gates.manifest.json` の各 gate に `status: "closed"` と
-非空の `evidence` / `owner` / `date` / `signOff` を入れるまで本番完了にしない。
-docs/runbook alone does not close production gates.
+検証済みの `evidence` / `owner` / `date` / `signOff` を入れるまで本番完了にしない。
+`evidence` は `docs/evidence/artifacts/` 配下の既存ファイルだけを指定する。
+docs/runbook alone does not close production gates. Do not point evidence at
+runbooks, plans, specs, or other markdown-only process docs.
 
 ### Release preflight
 
@@ -136,8 +138,9 @@ bash tool/verify_release_inputs.sh
 - `LUNARABI_WEB_BASE_URL` と `LUNARABI_API_BASE_URL` が absolute `https` URL で、localhost / `.example` / `.invalid` ではない
 - `LUNARABI_DEEP_LINK_HOST` が scheme / port / slash / path を持たない production host
 - prod Firebase ファイルに `placeholder` / `.example` / `.invalid` が残っていない
+- Dart code に FlutterFire-generated `FirebaseOptions` が入っていない
 - Android manifest が `${deepLinkHost}` placeholder を使い、iOS entitlements が materialize 済み
-- Android release signing input が env または `android/keystore.properties` にある
+- Android release signing input が env または `android/keystore.properties` にあり、store file が readable
 - `docs/evidence/release_gates.manifest.json` の全 gate が closed
 
 現ツリーは production secrets と evidence が無いので、preflight が失敗するのが正しい。
@@ -147,7 +150,7 @@ bash tool/verify_release_inputs.sh
 release では URL と deep link host を dart-define で入れる:
 
 ```bash
-fvm flutter build appbundle \
+bash tool/build_release.sh appbundle \
   --flavor prod \
   --dart-define=FLAVOR=prod \
   --dart-define=LUNARABI_WEB_BASE_URL="$LUNARABI_WEB_BASE_URL" \

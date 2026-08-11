@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.tasks.Exec
 
 plugins {
     id("com.android.application")
@@ -23,6 +24,7 @@ val releaseStoreFile = envOrKeystore("LUNARABI_ANDROID_STORE_FILE", "storeFile")
 val releaseStorePassword = envOrKeystore("LUNARABI_ANDROID_STORE_PASSWORD", "storePassword")
 val releaseKeyAlias = envOrKeystore("LUNARABI_ANDROID_KEY_ALIAS", "keyAlias")
 val releaseKeyPassword = envOrKeystore("LUNARABI_ANDROID_KEY_PASSWORD", "keyPassword")
+val lunarabiRootDir = rootProject.layout.projectDirectory.dir("..").asFile
 
 fun isPlaceholderHost(host: String): Boolean {
     val normalized = host.lowercase()
@@ -37,9 +39,11 @@ fun releaseInputErrors(): List<String> {
     val errors = mutableListOf<String>()
     val releaseDeepLinkHost = providers.environmentVariable("LUNARABI_DEEP_LINK_HOST").orNull
     if (releaseDeepLinkHost.isNullOrBlank() ||
+        releaseDeepLinkHost.trim() != releaseDeepLinkHost ||
         isPlaceholderHost(releaseDeepLinkHost) ||
         releaseDeepLinkHost.contains("://") ||
         releaseDeepLinkHost.contains("/") ||
+        releaseDeepLinkHost.contains("\\") ||
         releaseDeepLinkHost.contains(":")
     ) {
         errors += "Release deep link host must be set with LUNARABI_DEEP_LINK_HOST and must not be a placeholder."
@@ -115,8 +119,17 @@ android {
     }
 }
 
+val verifyLunarabiReleaseInputs = tasks.register<Exec>("verifyLunarabiReleaseInputs") {
+    workingDir = lunarabiRootDir
+    commandLine("bash", "tool/verify_release_inputs.sh")
+}
+
 tasks.configureEach {
-    if (name.lowercase().contains("release")) {
+    val taskName = name.lowercase()
+    if (taskName.contains("release") && name != "verifyLunarabiReleaseInputs") {
+        if (taskName.startsWith("assemble") || taskName.startsWith("bundle")) {
+            dependsOn(verifyLunarabiReleaseInputs)
+        }
         doFirst {
             val errors = releaseInputErrors()
             if (errors.isNotEmpty()) {
