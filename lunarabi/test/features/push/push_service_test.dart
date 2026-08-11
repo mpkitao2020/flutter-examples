@@ -7,6 +7,8 @@ import 'package:lunarabi/features/bridge/bridge_message.dart';
 import 'package:lunarabi/features/bridge/token_stores.dart';
 import 'package:lunarabi/features/push/notification_link_parser.dart';
 import 'package:lunarabi/features/push/push_service.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
 void main() {
   late AppConfig config;
@@ -57,6 +59,56 @@ void main() {
       });
     },
   );
+
+  test('trusted bridge.ready replays stored token every time', () async {
+    final service = PushService(
+      navigator: _FakeNavigator(),
+      guard: guard,
+      bridgeHost: host,
+    );
+    addTearDown(service.dispose);
+    push.setToken('stored-fcm-token');
+    final platform = _FakePlatformWebViewController();
+    final controller = WebViewController.fromPlatform(platform);
+
+    await host.ensureChannel(controller);
+    await host.injectBootstrap(platform: 'android');
+    await host.injectBootstrap(platform: 'android');
+
+    expect(
+      emitted.where((message) => message.type == BridgeTypes.bridgeReady),
+      hasLength(2),
+    );
+    final pushEvents = emitted
+        .where((message) => message.type == BridgeTypes.pushSetToken)
+        .toList();
+    expect(pushEvents, hasLength(2));
+    expect(
+      pushEvents.map((message) => message.payload),
+      everyElement({'token': 'stored-fcm-token', 'platform': 'android'}),
+    );
+  });
+
+  test('non-trusted bridge.ready does not replay stored token', () async {
+    committedUri = Uri.parse('https://app.lunarabi.example/articles/1');
+    final service = PushService(
+      navigator: _FakeNavigator(),
+      guard: guard,
+      bridgeHost: host,
+    );
+    addTearDown(service.dispose);
+    push.setToken('stored-fcm-token');
+    final platform = _FakePlatformWebViewController();
+    final controller = WebViewController.fromPlatform(platform);
+
+    await host.ensureChannel(controller);
+    await host.injectBootstrap(platform: 'android');
+
+    expect(
+      emitted.where((message) => message.type == BridgeTypes.pushSetToken),
+      isEmpty,
+    );
+  });
 }
 
 class _FakeNavigator implements AppNavigator {
@@ -94,4 +146,15 @@ class _ThrowingPushBackend implements PushBackendClient {
     registeredTokens.add(token);
     throw StateError('native register must not run');
   }
+}
+
+class _FakePlatformWebViewController extends PlatformWebViewController {
+  _FakePlatformWebViewController()
+    : super.implementation(const PlatformWebViewControllerCreationParams());
+
+  @override
+  Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {}
+
+  @override
+  Future<void> runJavaScript(String javaScript) async {}
 }

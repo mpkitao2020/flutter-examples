@@ -26,7 +26,9 @@ class PushService {
     FlutterLocalNotificationsPlugin? localNotifications,
   }) : _bridgeHost = bridgeHost,
        _messaging = messaging,
-       _local = localNotifications ?? FlutterLocalNotificationsPlugin();
+       _local = localNotifications ?? FlutterLocalNotificationsPlugin() {
+    _bridgeHost.addReadyListener(_replayTokenAfterReady);
+  }
 
   final AppNavigator navigator;
   final HostGuard guard;
@@ -39,6 +41,10 @@ class PushService {
 
   FirebaseMessaging get _messagingInstance =>
       _messaging ??= FirebaseMessaging.instance;
+
+  void dispose() {
+    _bridgeHost.removeReadyListener(_replayTokenAfterReady);
+  }
 
   Future<void> start() async {
     const initSettings = InitializationSettings(
@@ -108,14 +114,24 @@ class PushService {
 
   Future<void> publishToken(String token) async {
     try {
-      await _bridgeHost.notifyPushToken(
-        token,
-        platform: Platform.isIOS ? 'ios' : 'android',
-      );
+      await _bridgeHost.notifyPushToken(token, platform: _platform);
     } catch (error) {
       debugPrint('PushService: publish token failed: $error');
     }
   }
+
+  Future<void> _replayTokenAfterReady() async {
+    if (!_bridgeHost.isCommittedWebUriTrusted) {
+      return;
+    }
+    final token = _bridgeHost.push.token;
+    if (token == null) {
+      return;
+    }
+    await publishToken(token);
+  }
+
+  String get _platform => Platform.isIOS ? 'ios' : 'android';
 
   Future<void> _onForeground(RemoteMessage message) async {
     final notification = message.notification;

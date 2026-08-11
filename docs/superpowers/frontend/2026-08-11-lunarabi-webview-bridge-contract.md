@@ -107,6 +107,9 @@ Forbidden origin response:
 
 `platform` is `ios` or `android`.
 
+After each trusted `bridge.ready`, Flutter replays any stored FCM token as
+`push.setToken`. Allowed but non-trusted pages do not receive this replay.
+
 ## Trusted origin rule
 
 Flutter treats a page as bridge-trusted only when the committed main-frame URL

@@ -120,6 +120,7 @@ class _LunarabiAppState extends State<LunarabiApp> {
   @override
   void dispose() {
     _deepLinkListener?.dispose();
+    _pushService?.dispose();
     _gmoLifecycle.clear();
     super.dispose();
   }

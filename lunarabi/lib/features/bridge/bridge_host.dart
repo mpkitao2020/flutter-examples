@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 typedef BridgeEmitter = Future<void> Function(BridgeMessage message);
 typedef BridgeBootstrapGuard = bool Function();
+typedef BridgeReadyCallback = FutureOr<void> Function();
 
 /// Bidirectional bridge between WebView JS and Flutter.
 class BridgeHost {
@@ -19,17 +21,21 @@ class BridgeHost {
     required Uri? Function() committedWebUri,
     required Uri webBaseUrl,
     this._emitter,
-    this.onReady,
+    BridgeReadyCallback? onReady,
   }) : _committedWebUri = committedWebUri,
-       _webBaseUrl = webBaseUrl;
+       _webBaseUrl = webBaseUrl {
+    if (onReady != null) {
+      _readyListeners.add(onReady);
+    }
+  }
 
   final BottomNavController nav;
   final AuthTokenRepository authRepo;
   final PushTokenStore push;
-  final VoidCallback? onReady;
   Uri? Function() _committedWebUri;
   Uri _webBaseUrl;
 
+  final _readyListeners = <BridgeReadyCallback>[];
   BridgeEmitter? _emitter;
   WebViewController? _controller;
   var _channelEnsured = false;
@@ -38,8 +44,19 @@ class BridgeHost {
 
   bool get isAttached => _channelEnsured;
 
+  bool get isCommittedWebUriTrusted =>
+      isTrustedBridgeOrigin(_committedWebUri(), _webBaseUrl);
+
   void setEmitter(BridgeEmitter emitter) {
     _emitter = emitter;
+  }
+
+  void addReadyListener(BridgeReadyCallback listener) {
+    _readyListeners.add(listener);
+  }
+
+  void removeReadyListener(BridgeReadyCallback listener) {
+    _readyListeners.remove(listener);
   }
 
   void updateTrustedOrigin({
@@ -90,11 +107,17 @@ class BridgeHost {
     if (!_shouldContinueBootstrap(shouldContinue)) {
       return;
     }
-    onReady?.call();
+    await _notifyReadyListeners();
   }
 
   bool _shouldContinueBootstrap(BridgeBootstrapGuard? shouldContinue) {
     return shouldContinue == null || shouldContinue();
+  }
+
+  Future<void> _notifyReadyListeners() async {
+    for (final listener in List<BridgeReadyCallback>.of(_readyListeners)) {
+      await listener();
+    }
   }
 
   Future<void> attach(
