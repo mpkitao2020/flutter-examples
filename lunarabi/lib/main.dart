@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarabi/core/env/app_config.dart';
@@ -5,6 +6,10 @@ import 'package:lunarabi/features/webview/webview_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Native-only Firebase config (google-services.json / GoogleService-Info.plist).
+  // Do not pass FirebaseOptions here.
+  await Firebase.initializeApp();
 
   const rawFlavor = String.fromEnvironment('FLAVOR');
   final flavor = parseFlavor(rawFlavor, isRelease: kReleaseMode);
