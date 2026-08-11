@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lunarabi/core/env/app_config.dart';
 import 'package:lunarabi/core/navigation/app_navigator.dart';
 import 'package:lunarabi/features/bridge/bottom_nav_bar.dart';
@@ -34,6 +35,22 @@ Future<WebViewSystemBackDecision> decideWebViewSystemBack({
 
   await goBack();
   return WebViewSystemBackDecision.handledByWebView;
+}
+
+@visibleForTesting
+Future<WebViewSystemBackDecision> handleWebViewSystemBack({
+  required Future<bool> Function() canGoBack,
+  required Future<void> Function() goBack,
+  required Future<bool> Function() popRoute,
+}) async {
+  final decision = await decideWebViewSystemBack(
+    canGoBack: canGoBack,
+    goBack: goBack,
+  );
+  if (decision == WebViewSystemBackDecision.allowRoutePop) {
+    await popRoute();
+  }
+  return decision;
 }
 
 @visibleForTesting
@@ -170,9 +187,11 @@ class _WebViewShellState extends State<WebViewShell> {
   }
 
   Future<void> _handleSystemBack() async {
-    final decision = await decideWebViewSystemBack(
+    final navigator = Navigator.of(context);
+    final decision = await handleWebViewSystemBack(
       canGoBack: _controller.canGoBack,
       goBack: _controller.goBack,
+      popRoute: () => _popRouteOrExit(navigator),
     );
 
     if (!mounted) {
@@ -180,13 +199,27 @@ class _WebViewShellState extends State<WebViewShell> {
     }
 
     if (decision == WebViewSystemBackDecision.allowRoutePop) {
-      if (!_routeCanPop) {
-        setState(() => _routeCanPop = true);
-      }
       return;
     }
 
     await _refreshRoutePopState();
+  }
+
+  Future<bool> _popRouteOrExit(NavigatorState navigator) async {
+    if (!_routeCanPop) {
+      setState(() => _routeCanPop = true);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) {
+        return true;
+      }
+    }
+
+    if (await navigator.maybePop()) {
+      return true;
+    }
+
+    await SystemNavigator.pop();
+    return true;
   }
 
   Future<void> _configureControllerAndLoad() async {

@@ -220,5 +220,25 @@ void main() {
       expect(decision, WebViewSystemBackDecision.allowRoutePop);
       expect(goBackCount, 0);
     });
+
+    test('WebView 履歴がない system back は route pop を実行する', () async {
+      var goBackCount = 0;
+      var popRouteCount = 0;
+
+      final decision = await handleWebViewSystemBack(
+        canGoBack: () async => false,
+        goBack: () async {
+          goBackCount += 1;
+        },
+        popRoute: () async {
+          popRouteCount += 1;
+          return true;
+        },
+      );
+
+      expect(decision, WebViewSystemBackDecision.allowRoutePop);
+      expect(goBackCount, 0);
+      expect(popRouteCount, 1);
+    });
   });
 }
