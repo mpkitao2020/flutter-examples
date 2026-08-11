@@ -12,6 +12,13 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  const navIconPaths = <String>[
+    'branding/nav/home.svg',
+    'branding/nav/search.svg',
+    'branding/nav/notify.svg',
+    'branding/nav/account.svg',
+  ];
+
   test('ソース画像と生成物の主要パスが存在する', () {
     // Arrange: 確認したいパス一覧
     const requiredPaths = <String>[
@@ -21,6 +28,7 @@ void main() {
       'branding/splash_dark.png',
       'branding/notification_icon.png',
       'branding/README.md',
+      ...navIconPaths,
       // Android アプリアイコン（flutter_launcher_icons が生成）
       'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',
       // Android 通知アイコン（白単色）
@@ -36,6 +44,14 @@ void main() {
     ];
 
     expect(missing, isEmpty, reason: '不足ファイル: $missing');
+  });
+
+  test('pubspec にボトムナビ SVG が asset 登録されている', () {
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+
+    for (final path in navIconPaths) {
+      expect(pubspec, contains('- $path'));
+    }
   });
 
   test('AndroidManifest に通知アイコンの meta-data がある', () {
