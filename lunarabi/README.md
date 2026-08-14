@@ -146,6 +146,8 @@ bash tool/verify_release_inputs.sh
 現ツリーは production secrets と evidence が無いので、preflight が失敗するのが正しい。
 Xcode Archive / `flutter build ipa` でも Runner の early Build Phase が Release configuration で同じ preflight を実行する。
 
+GitHub Actions (`.github/workflows/lunarabi.yml`) は PR / push で `flutter analyze` と `flutter test` を走らせる。`verify_release_inputs.sh` は `workflow_dispatch` の `release-preflight` ジョブでのみ必須化し、placeholder ツリーの PR を常時赤にしない。
+
 ### Release dart-define
 
 release では URL と deep link host を dart-define で入れる:

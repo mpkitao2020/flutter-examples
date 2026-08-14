@@ -4,6 +4,12 @@ This runbook describes how to prepare a shippable Lunarabi release. It does
 not close any production gate by itself. Gates close only when
 `docs/evidence/release_gates.manifest.json` has `status: "closed"` plus
 non-empty `evidence`, `owner`, `date`, and `signOff` for every gate.
+`date` must be a real calendar date (`YYYY-MM-DD`, not `2026-99-99`).
+`evidence` must be a file under `docs/evidence/artifacts/` of at least 32 bytes.
+
+GitHub Actions runs `flutter test` on pull requests. The same preflight as
+this runbook is a `workflow_dispatch` job named `release-preflight`; it is
+not required to pass on placeholder PRs.
 
 ## Required release inputs
 

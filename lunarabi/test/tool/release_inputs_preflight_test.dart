@@ -4,6 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('release input preflight', () {
+    test('CI runs tests on PRs and keeps release preflight off pull_request', () {
+      final workflow = File('../.github/workflows/lunarabi.yml');
+      expect(workflow.existsSync(), isTrue);
+      final source = workflow.readAsStringSync();
+      expect(source, contains('flutter test'));
+      expect(source, contains('flutter analyze --no-fatal-infos lib test'));
+      expect(source, contains("if: github.event_name == 'workflow_dispatch'"));
+      expect(source, contains('bash tool/verify_release_inputs.sh'));
+    });
+
     test('single entrypoint fails the current placeholder tree', () async {
       final script = File('tool/verify_release_inputs.sh');
       expect(script.existsSync(), isTrue);
@@ -126,7 +136,15 @@ void main() {
           artifactName: 'date.json',
           artifactContents: 'x' * 32,
           date: '2026/08/11',
-          expectedError: 'date must match',
+          expectedError: 'valid calendar date',
+        ),
+        _ManifestScenario(
+          name: 'rejects impossible calendar dates',
+          evidence: 'docs/evidence/artifacts/calendar.json',
+          artifactName: 'calendar.json',
+          artifactContents: 'x' * 32,
+          date: '2026-99-99',
+          expectedError: 'valid calendar date',
         ),
         _ManifestScenario(
           name: 'rejects short owners',

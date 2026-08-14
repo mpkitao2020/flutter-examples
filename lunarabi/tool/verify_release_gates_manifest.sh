@@ -6,8 +6,8 @@ MANIFEST="$ROOT/docs/evidence/release_gates.manifest.json"
 
 python3 - "$MANIFEST" "$ROOT" <<'PY'
 import json
-import re
 import sys
+from datetime import date as calendar_date
 from pathlib import Path
 from pathlib import PurePosixPath
 
@@ -37,7 +37,6 @@ errors = []
 required = ("evidence", "owner", "date", "signOff")
 artifact_prefix = PurePosixPath("docs/evidence/artifacts")
 artifacts_root = (root / "docs/evidence/artifacts").resolve()
-date_re = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 def validate_evidence(name: str, evidence: str) -> None:
@@ -81,9 +80,12 @@ for index, gate in enumerate(gates):
     evidence = gate.get("evidence")
     if isinstance(evidence, str) and evidence.strip():
         validate_evidence(name, evidence.strip())
-    date = gate.get("date")
-    if isinstance(date, str) and date.strip() and not date_re.match(date.strip()):
-        errors.append(f"{name}: date must match YYYY-MM-DD")
+    raw_date = gate.get("date")
+    if isinstance(raw_date, str) and raw_date.strip():
+        try:
+            calendar_date.fromisoformat(raw_date.strip())
+        except ValueError:
+            errors.append(f"{name}: date must be a valid calendar date (YYYY-MM-DD)")
     owner = gate.get("owner")
     if isinstance(owner, str) and owner.strip() and len(owner.strip()) < 3:
         errors.append(f"{name}: owner must be at least 3 characters")
